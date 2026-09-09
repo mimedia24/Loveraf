@@ -1,7 +1,7 @@
 module.exports={
   apps:[{
     name:'loveraf-api',
-    cwd:'/var/www/loveraf-server',
+    cwd:__dirname,
     script:'server.js',
     instances:1,
     exec_mode:'fork',
