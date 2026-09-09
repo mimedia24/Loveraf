@@ -37,6 +37,10 @@ Loverap-app/artifacts/
 Loverap-app/server/
 Loverap-app/admin/
 
+# This GitHub repository deploys only the Loveraf API.
+/Loverap-app/
+/admin/
+
 # OS/editor files
 .DS_Store
 Thumbs.db
