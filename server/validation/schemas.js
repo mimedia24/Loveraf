@@ -2,9 +2,11 @@ const {z}=require('zod');
 const objectId=z.string().regex(/^[a-f\d]{24}$/i);
 const uuid=z.string().uuid();
 const password=z.string().min(10).max(200);
+const optionalEmail=z.preprocess(value=>typeof value==='string'&&!value.trim()?undefined:value,z.string().trim().email().optional());
+const optionalPhone=z.preprocess(value=>typeof value==='string'&&!value.trim()?undefined:value,z.string().trim().regex(/^01\d{9}$/).optional());
 const body=schema=>z.object({body:schema,query:z.any(),params:z.any()});
 const auth={
-  register:body(z.object({name:z.string().trim().min(2).max(120),email:z.string().email().optional(),phone:z.string().regex(/^01\d{9}$/).optional(),password,device:z.record(z.string(),z.any()).optional()}).strict()),
+  register:body(z.object({name:z.string().trim().min(2).max(120),email:optionalEmail,phone:optionalPhone,password,device:z.record(z.string(),z.any()).optional()}).strict().refine(value=>value.email||value.phone,{message:'Email or mobile number is required.',path:['email']})),
   login:body(z.object({login:z.string().trim().min(3).max(200),password,device:z.record(z.string(),z.any()).optional()}).strict()),
   challenge:body(z.object({channel:z.enum(['email','phone']),purpose:z.enum(['verify','admin'])}).strict()),
   recovery:body(z.object({login:z.string().min(3),channel:z.enum(['email','phone']).optional()}).strict()),

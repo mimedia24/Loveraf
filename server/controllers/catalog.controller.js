@@ -14,7 +14,7 @@ class CatalogController{
     const rows=await Product.find(filter).sort({createdAt:-1,_id:1}).skip(offset).limit(limit+1);res.json({items:rows.slice(0,limit).map(serialize.product),nextOffset:rows.length>limit?offset+limit:null});};
   detail=async(req,res)=>{const product=await Product.findOne({_id:req.params.id,status:'approved'});if(!product||!await Seller.exists({_id:product.seller,status:'approved'}))throw notFound('Product is no longer available.');res.json(serialize.product(product));};
   sellers=async(req,res)=>res.json((await Seller.find({user:req.auth.user._id}).sort({createdAt:1})).map(serialize.seller));
-  createSeller=async(req,res)=>{this.authService.requireVerified(req.auth.user);const seller=await Seller.create({user:req.auth.user._id,...req.validated.body});await AuditEvent.create({actor:req.auth.user._id,action:'seller.submit',target:String(seller._id)});res.status(201).json(serialize.seller(seller));};
+  createSeller=async(req,res)=>{const seller=await Seller.create({user:req.auth.user._id,...req.validated.body});await AuditEvent.create({actor:req.auth.user._id,action:'seller.submit',target:String(seller._id)});res.status(201).json(serialize.seller(seller));};
   sellerProducts=async(req,res)=>res.json((await Product.find({seller:req.seller._id}).sort({createdAt:-1})).map(serialize.product));
   publish=async(req,res)=>{if(req.seller.status!=='approved')throw forbidden('Seller approval is required.');const input=req.validated.body;
     const imageIds=[...new Set(input.images.map(image=>image.id))];const media=await Media.find({_id:{$in:imageIds},owner:req.auth.user._id});if(media.length!==imageIds.length)throw badRequest('Images must belong to this account.');

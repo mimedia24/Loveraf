@@ -4,17 +4,13 @@ function parseOrigins(value=process.env.APP_ORIGINS){
   return String(value||'').split(',').map(origin=>origin.trim()).filter(Boolean);
 }
 
-function emailDeliveryConfigured(){
-  return Boolean(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM);
-}
-
 function bridgeDeliveryConfigured(channel){
   const endpoint=channel==='email'?process.env.OTP_EMAIL_ENDPOINT:process.env.OTP_SMS_ENDPOINT;
   return Boolean(endpoint?.startsWith('https://')&&process.env.PROVIDER_BRIDGE_TOKEN);
 }
 
 function providerCapabilities(){
-  const emailVerification=emailDeliveryConfigured()||bridgeDeliveryConfigured('email');
+  const emailVerification=bridgeDeliveryConfigured('email');
   const mobileVerification=bridgeDeliveryConfigured('phone');
   const mediaUpload=Boolean(
     process.env.CLOUDINARY_CLOUD_NAME&&process.env.CLOUDINARY_API_KEY&&process.env.CLOUDINARY_API_SECRET
@@ -37,4 +33,4 @@ function validateProductionEnvironment(){
   if(errors.length)throw new Error(`Production environment is invalid:\n- ${errors.join('\n- ')}`);
 }
 
-module.exports={parseOrigins,emailDeliveryConfigured,bridgeDeliveryConfigured,providerCapabilities,validateProductionEnvironment};
+module.exports={parseOrigins,bridgeDeliveryConfigured,providerCapabilities,validateProductionEnvironment};
