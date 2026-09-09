@@ -1,0 +1,12 @@
+const mongoose=require('mongoose');
+const {Schema,model}=mongoose;
+const options={timestamps:true,versionKey:'version'};
+const imageSchema=new Schema({mediaId:{type:Schema.Types.ObjectId,ref:'Media'},uri:String},{_id:false});
+const variantSchema=new Schema({name:String,swatch:String,imageIds:[String]},{_id:false});
+const Media=model('Media',new Schema({owner:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},publicId:String,uri:{type:String,required:true},mime:String,bytes:Number},options));
+const productSchema=new Schema({seller:{type:Schema.Types.ObjectId,ref:'Seller',required:true,index:true},title:{type:String,required:true,index:'text'},description:String,category:{type:String,index:true},sku:{type:String,required:true},priceMinor:{type:Number,required:true,min:0},oldPriceMinor:Number,stock:{type:Number,required:true,min:0},sizes:[String],images:[imageSchema],variants:[variantSchema],returnDays:Number,exchangeDays:Number,deliveryMinDays:Number,deliveryMaxDays:Number,codAvailable:Boolean,status:{type:String,enum:['draft','pending','approved','rejected','archived'],default:'pending',index:true},moderationReason:String,soldUnits:{type:Number,default:0,select:false},ratingTotal:{type:Number,default:0,select:false},ratingCount:{type:Number,default:0,select:false}},options);
+productSchema.index({seller:1,sku:1},{unique:true});const Product=model('Product',productSchema);
+const inventorySchema=new Schema({product:{type:Schema.Types.ObjectId,ref:'Product',required:true,index:true},color:{type:String,required:true},size:{type:String,required:true},stock:{type:Number,required:true,min:0},reserved:{type:Number,default:0,min:0}},options);
+inventorySchema.index({product:1,color:1,size:1},{unique:true});const Inventory=model('Inventory',inventorySchema);
+const Report=model('Report',new Schema({reporter:{type:Schema.Types.ObjectId,ref:'User',required:true},product:{type:Schema.Types.ObjectId,ref:'Product',required:true},reason:{type:String,required:true},status:{type:String,default:'open'}},options));
+module.exports={Media,Product,Inventory,Report};

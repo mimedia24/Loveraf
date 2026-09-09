@@ -1,0 +1,14 @@
+module.exports={
+  apps:[{
+    name:'loveraf-api',
+    cwd:'/var/www/loveraf-server',
+    script:'server.js',
+    instances:1,
+    exec_mode:'fork',
+    autorestart:true,
+    max_memory_restart:'450M',
+    kill_timeout:12000,
+    listen_timeout:10000,
+    env:{NODE_ENV:'production',HOST:'127.0.0.1',PORT:3001}
+  }]
+};

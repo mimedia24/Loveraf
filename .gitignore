@@ -1,0 +1,44 @@
+# Dependencies and generated output
+**/node_modules/
+**/.next/
+**/.gradle/
+**/build/
+**/dist/
+**/coverage/
+**/*.tsbuildinfo
+**/.cache/
+**/.bundle/
+**/Pods/
+
+# Secrets and machine-local configuration
+**/.env
+**/.env.*
+!**/.env.example
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
+**/local.properties
+
+# Logs, packages, backups and release artifacts
+*.log
+*.apk
+*.aab
+*.zip
+*.tar.gz
+*.exe
+backups/
+release/
+Loverap-app/artifacts/
+
+# Canonical server and admin live at the repository root
+Loverap-app/server/
+Loverap-app/admin/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

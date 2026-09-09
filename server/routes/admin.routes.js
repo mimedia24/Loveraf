@@ -1,0 +1,5 @@
+const express=require('express');const asyncHandler=require('../utils/asyncHandler');const AdminController=require('../controllers/admin.controller');
+module.exports=function adminRoutes(requireAuth,role){const r=express.Router(),c=new AdminController();r.use(requireAuth);
+  r.post('/admin/content/:key',role(['catalog']),asyncHandler(c.content));r.get('/admin/rules',role(['finance']),asyncHandler(c.rules));r.patch('/admin/rules/:key',role(['finance']),asyncHandler(c.updateRule));
+  r.get('/admin/:resource',(req,res,next)=>{if(!['users','sellers','products','reports','audit'].includes(req.params.resource))return next();const roles=['sellers','products'].includes(req.params.resource)?['catalog']:['users','reports'].includes(req.params.resource)?['support']:[];return role(roles)(req,res,next);},asyncHandler(c.list));
+  r.patch('/admin/:resource/:id',(req,res,next)=>{if(!['users','sellers','products'].includes(req.params.resource))return next();return role(req.params.resource==='users'?[]:['catalog'])(req,res,next);},asyncHandler(c.moderate));r.get('/me/wallet',asyncHandler(c.balance));return r;};

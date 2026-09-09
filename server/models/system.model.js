@@ -1,0 +1,11 @@
+const mongoose=require('mongoose');
+const {Schema,model}=mongoose;
+const options={timestamps:true,versionKey:'version'};
+const AuditEvent=model('AuditEvent',new Schema({actor:{type:Schema.Types.ObjectId,ref:'User'},action:{type:String,required:true,index:true},target:String,reason:String,metadata:Schema.Types.Mixed},options));
+const Feature=model('Feature',new Schema({key:{type:String,required:true,unique:true},enabled:{type:Boolean,default:false}},options));
+const Content=model('Content',new Schema({key:{type:String,required:true,unique:true},data:Schema.Types.Mixed},options));
+const BusinessRule=model('BusinessRule',new Schema({key:{type:String,required:true,unique:true},enabled:{type:Boolean,default:false},data:Schema.Types.Mixed},options));
+const ledgerAccountSchema=new Schema({owner:{type:Schema.Types.ObjectId,ref:'User',required:true},kind:{type:String,required:true},currency:{type:String,default:'BDT'}},options);
+ledgerAccountSchema.index({owner:1,kind:1,currency:1},{unique:true});const LedgerAccount=model('LedgerAccount',ledgerAccountSchema);
+const LedgerEntry=model('LedgerEntry',new Schema({account:{type:Schema.Types.ObjectId,ref:'LedgerAccount',required:true,index:true},amountMinor:{type:Number,required:true},reference:{type:String,required:true},metadata:Schema.Types.Mixed},options));
+module.exports={AuditEvent,Feature,Content,BusinessRule,LedgerAccount,LedgerEntry};
