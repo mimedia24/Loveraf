@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const bcrypt=require('bcryptjs');
 const jwt=require('jsonwebtoken');
 const {User,Session,Verification}=require('../models/account.model');
-const {badRequest,unauthorized,forbidden,notFound}=require('../utils/errors');
+const {AppError,badRequest,unauthorized,forbidden,notFound}=require('../utils/errors');
 const serialize=require('../utils/serializers');
 
 const normalize=value=>String(value||'').trim().toLowerCase();
@@ -50,10 +50,14 @@ class AuthService{
     return {...await this.createChallenge(user,target,channel,'recovery'),accepted:true};
   }
   async createChallenge(user,target,channel,purpose){
+    const recent=await Verification.exists({user:user._id,target,channel,purpose,createdAt:{$gte:new Date(Date.now()-60000)}});
+    if(recent)throw new AppError(429,'RATE_LIMITED','Please wait one minute before requesting another code.');
     const code=String(crypto.randomInt(100000,1000000));
     const challenge=new Verification({user:user._id,target,channel,purpose,codeHash:'pending',expiresAt:new Date(Date.now()+10*60000)});
     challenge.codeHash=otpDigest(String(challenge._id),code);await challenge.save();
-    await this.deliver({id:String(challenge._id),target,channel,purpose,code});return {challengeId:String(challenge._id),expiresInSeconds:600};
+    try{await this.deliver({id:String(challenge._id),target,channel,purpose,code});}
+    catch(error){await Verification.deleteOne({_id:challenge._id});throw error;}
+    return {challengeId:String(challenge._id),expiresInSeconds:600};
   }
   async verify(user,input){
     const challenge=await Verification.findById(input.challengeId).select('+codeHash');

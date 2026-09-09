@@ -21,7 +21,7 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Fill `.env` on the VPS with production values. Generate new independent JWT and OTP HMAC secrets. The MongoDB password must be URL encoded. Keep provider variables empty for the first core-API test.
+Fill `.env` on the VPS with production values. Generate new independent JWT and OTP HMAC secrets. The MongoDB password must be URL encoded. For Gmail email verification, set `SMTP_HOST=smtp.gmail.com`, port `465`, secure mode, the Gmail address, its dedicated App Password and a matching `SMTP_FROM`. Keep SMS and media provider variables empty until configured.
 
 Install `deploy/nginx-api.loveraf.com.conf` as `/etc/nginx/sites-available/api.loveraf.com`, enable it, validate with `nginx -t`, then reload Nginx. Start the API with:
 
