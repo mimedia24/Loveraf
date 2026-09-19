@@ -1,11 +1,12 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {AppError}=require('../utils/errors');
-const {bridgeDeliveryConfigured}=require('../config/environment');
+const {bridgeDeliveryConfigured,smtpConfigured}=require('../config/environment');
+const {deliverSmtp}=require('./smtp.service');
 
 async function deliverBridge(message){
   const endpoint=message.channel==='email'?process.env.OTP_EMAIL_ENDPOINT:process.env.OTP_SMS_ENDPOINT;
-  const response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${process.env.PROVIDER_BRIDGE_TOKEN}`},body:JSON.stringify(message)});
+  const response=await fetch(endpoint,{method:'POST',signal:AbortSignal.timeout(15000),headers:{'content-type':'application/json',authorization:`Bearer ${process.env.PROVIDER_BRIDGE_TOKEN}`},body:JSON.stringify(message)});
   if(!response.ok)throw new Error(`Provider returned HTTP ${response.status}.`);
 }
 
@@ -13,6 +14,7 @@ async function providerDelivery(message){
   if(process.env.NODE_ENV==='production'){
     try{
       if(bridgeDeliveryConfigured(message.channel))return await deliverBridge(message);
+      if(message.channel==='email'&&smtpConfigured())return await deliverSmtp(message);
       throw new AppError(503,'PROVIDER_UNAVAILABLE',`${message.channel==='email'?'Email':'Mobile'} verification is unavailable.`);
     }catch(error){
       if(error instanceof AppError)throw error;

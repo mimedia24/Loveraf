@@ -19,4 +19,6 @@ Food Verse Server09-এর পরিচিত structure অনুসরণ ক�
 3. Run `npm install`, then `npm run dev`.
 4. API: `http://127.0.0.1:3001/api/v1`; health: `/health`.
 
-Production OTP and image uploads refuse to run without HTTPS provider bridge and Cloudinary credentials. Never commit `.env`, `secret.js`, Firebase keys or provider credentials.
+Production OTP refuses to run without a configured HTTPS provider bridge or SMTP provider. Images use local server storage when `MEDIA_STORAGE=local`; Cloudinary can be configured later without changing the app contract. Online payment, courier automation, rewards, push and biometric unlock remain disabled until their real providers and business rules exist. Never commit `.env`, `secret.js`, Firebase keys or provider credentials.
+
+The machine-readable API contract is available at `/api/v1/openapi.json`.

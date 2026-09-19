@@ -7,8 +7,16 @@ const CatalogController=require('../controllers/catalog.controller');
 const {sellerOwner}=require('../middleware/auth');
 module.exports=function catalogRoutes(authService,requireAuth,uploadMedia){
   const publicRouter=express.Router(),privateRouter=express.Router(),controller=new CatalogController(authService);controller.uploadMedia=uploadMedia;
-  publicRouter.get('/features',asyncHandler(controller.features));publicRouter.get('/products',asyncHandler(controller.list));publicRouter.get('/products/:id',asyncHandler(controller.detail));publicRouter.get('/content/:key',asyncHandler(controller.content));
+  publicRouter.get('/features',asyncHandler(controller.features));publicRouter.get('/products',asyncHandler(controller.list));publicRouter.get('/products/:productId/reviews',asyncHandler(controller.reviews));publicRouter.get('/products/:id',asyncHandler(controller.detail));publicRouter.get('/sellers/:id',asyncHandler(controller.sellerDetail));publicRouter.get('/content/:key',asyncHandler(controller.content));
   privateRouter.use(requireAuth);privateRouter.get('/me/sellers',asyncHandler(controller.sellers));privateRouter.post('/me/sellers',validate(schemas.seller),asyncHandler(controller.createSeller));privateRouter.get('/me/sellers/:id/products',sellerOwner(),asyncHandler(controller.sellerProducts));privateRouter.post('/me/sellers/:id/products',sellerOwner(),validate(schemas.product),asyncHandler(controller.publish));
+  privateRouter.patch('/me/sellers/:id/products/:productId',sellerOwner(),validate(schemas.product),asyncHandler(controller.updateProduct));privateRouter.delete('/me/sellers/:id/products/:productId',sellerOwner(),asyncHandler(controller.archiveProduct));
+  privateRouter.get('/me/wishlist',asyncHandler(controller.wishlist));privateRouter.put('/me/wishlist/:productId',asyncHandler(controller.saveWishlist));privateRouter.delete('/me/wishlist/:productId',asyncHandler(controller.removeWishlist));
+  privateRouter.get('/me/compare',asyncHandler(controller.compare));privateRouter.put('/me/compare/:productId',asyncHandler(controller.saveCompare));privateRouter.delete('/me/compare/:productId',asyncHandler(controller.removeCompare));
+  privateRouter.get('/me/recent-products',asyncHandler(controller.recentProducts));privateRouter.put('/me/recent-products/:productId',asyncHandler(controller.saveRecentProduct));privateRouter.delete('/me/recent-products',asyncHandler(controller.clearRecentProducts));
+  privateRouter.get('/me/followed-sellers',asyncHandler(controller.followedSellers));privateRouter.put('/me/followed-sellers/:sellerId',asyncHandler(controller.followSeller));privateRouter.delete('/me/followed-sellers/:sellerId',asyncHandler(controller.unfollowSeller));
+  privateRouter.post('/products/:productId/report',validate(schemas.productReport),asyncHandler(controller.reportProduct));
+  privateRouter.post('/products/:productId/reviews',validate(schemas.productReview),asyncHandler(controller.submitReview));privateRouter.get('/me/sellers/:id/reviews',sellerOwner(),asyncHandler(controller.sellerReviews));privateRouter.put('/me/sellers/:id/reviews/:reviewId/reply',sellerOwner(),validate(schemas.sellerReviewReply),asyncHandler(controller.replyReview));
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024,files:1}});privateRouter.post('/media',upload.single('image'),asyncHandler(controller.upload));
+  privateRouter.post('/me/sellers/:id/submit',sellerOwner(),validate(schemas.sellerSubmission),asyncHandler(controller.completeSeller));
   return {publicRouter,privateRouter};
 };

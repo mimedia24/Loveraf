@@ -5,6 +5,8 @@ const schemas=require('../validation/schemas');
 const AuthController=require('../controllers/auth.controller');
 module.exports=function authRoutes(authService,requireAuth){
   const router=express.Router(),controller=new AuthController(authService);
+  router.post('/seller/register',validate(schemas.auth.sellerRegister),asyncHandler(async(req,res)=>res.status(201).json(await authService.registerSeller(req.validated.body))));
+  router.post('/seller/login',validate(schemas.auth.login),asyncHandler(async(req,res)=>res.status(201).json(await authService.login(req.validated.body,'seller'))));
   router.post('/register',validate(schemas.auth.register),asyncHandler(controller.register));
   router.post('/login',validate(schemas.auth.login),asyncHandler(controller.login));
   router.post('/recovery',validate(schemas.auth.recovery),asyncHandler(controller.recovery));

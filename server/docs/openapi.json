@@ -1,0 +1,446 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Loveraf API",
+    "version": "1.0.0",
+    "description": "Production API contract for the Loveraf Android app and web administration panel. Money values use integer minor units."
+  },
+  "servers": [
+    { "url": "https://api.loveraf.com/api/v1", "description": "Production" },
+    { "url": "http://127.0.0.1:3001/api/v1", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "System" },
+    { "name": "Authentication" },
+    { "name": "Catalog" },
+    { "name": "Commerce" },
+    { "name": "Communication" },
+    { "name": "Administration" }
+  ],
+  "paths": {
+    "/features": {
+      "get": { "tags": ["System"], "summary": "Read server-controlled feature availability", "responses": { "200": { "description": "Capability map", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Features" } } } } } }
+    },
+    "/auth/register": {
+      "post": { "tags": ["Authentication"], "summary": "Create a personal account", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterInput" } } } }, "responses": { "201": { "description": "Authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSession" } } } }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/login": {
+      "post": { "tags": ["Authentication"], "summary": "Sign in with email or phone and password", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["login", "password"], "properties": { "login": { "type": "string" }, "password": { "type": "string", "format": "password" } } } } } }, "responses": { "201": { "description": "Authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSession" } } } }, "401": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/seller/register": {
+      "post": { "tags": ["Authentication"], "summary": "Create an independent seller account and draft store", "responses": { "201": { "description": "Authenticated seller session and draft store" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/seller/login": {
+      "post": { "tags": ["Authentication"], "summary": "Sign in to an independent seller account", "responses": { "201": { "description": "Authenticated seller session" }, "401": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/recovery": {
+      "post": { "tags": ["Authentication"], "summary": "Request password recovery through a configured verified channel", "responses": { "201": { "description": "Recovery challenge created" }, "400": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/reset-password": {
+      "post": { "tags": ["Authentication"], "summary": "Reset a password with a verified recovery challenge", "responses": { "201": { "description": "Password reset" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/logout": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Revoke the current session", "responses": { "200": { "description": "Signed out" } } }
+    },
+    "/auth/challenge": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Create an account or administrator verification challenge", "responses": { "201": { "description": "Challenge created" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/verify": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Verify a challenge code and update its purpose", "responses": { "201": { "description": "Challenge verified" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/auth/reauthenticate": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Confirm the current password before a sensitive action", "responses": { "201": { "description": "Identity reconfirmed" }, "401": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Read the authenticated profile and current session state", "responses": { "200": { "description": "Authenticated profile" } } },
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Update profile details and preferences", "responses": { "200": { "description": "Updated profile" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/summary": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Read persisted account summary counts", "responses": { "200": { "description": "Account summary" } } }
+    },
+    "/me/password": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Change password and revoke other sessions", "responses": { "200": { "description": "Password changed" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sessions": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "List active account sessions", "responses": { "200": { "description": "Active sessions" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Revoke every session except the current one", "responses": { "200": { "description": "Other sessions revoked" } } }
+    },
+    "/me/sessions/{id}": {
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Revoke one owned non-current session", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Session revoked" }, "400": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/addresses": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "List saved delivery addresses", "responses": { "200": { "description": "Address list" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Create a saved delivery address", "responses": { "201": { "description": "Address created" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/addresses/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Update an owned delivery address", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Address updated" }, "404": { "$ref": "#/components/responses/Error" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Authentication"], "summary": "Delete an owned delivery address", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Address deleted" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/products": {
+      "get": { "tags": ["Catalog"], "summary": "List approved products from approved sellers", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" }, { "name": "query", "in": "query", "schema": { "type": "string", "maxLength": 200 } }, { "name": "category", "in": "query", "schema": { "type": "string", "maxLength": 100 } }, { "name": "sellerId", "in": "query", "schema": { "type": "string" } }, { "name": "sort", "in": "query", "schema": { "enum": ["popular", "newest", "price_asc", "rating"], "default": "popular" } }, { "name": "minRating", "in": "query", "schema": { "type": "number", "minimum": 0, "maximum": 5 } } ], "responses": { "200": { "description": "Product page", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductPage" } } } }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/products/{id}": {
+      "get": { "tags": ["Catalog"], "summary": "Read an approved product", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/products/{productId}/reviews": {
+      "get": { "tags": ["Catalog"], "summary": "List published reviews for an approved product", "parameters": [ { "$ref": "#/components/parameters/ProductId" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Review page" }, "404": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Submit a review for an eligible delivered purchase", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "201": { "description": "Review submitted for moderation" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/products/{productId}/report": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Submit a product moderation report", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "201": { "description": "Report submitted" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/sellers/{id}": {
+      "get": { "tags": ["Catalog"], "summary": "Read an approved public storefront", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Storefront" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List seller identities owned by the current seller principal", "responses": { "200": { "description": "Owned stores" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Create a draft store for a seller principal", "responses": { "201": { "description": "Draft store" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/submit": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Complete store information and submit it for approval", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerSubmission" } } } }, "responses": { "200": { "description": "Store submitted" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/products": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List the authenticated seller's products", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller product page" }, "403": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Create an idempotent product submission", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Product submitted" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/products/{productId}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Update an owned product and return material changes to moderation", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Product updated" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Archive an owned product", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Product archived" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/reviews": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List published reviews belonging to an owned store", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller review page" } } }
+    },
+    "/me/sellers/{id}/reviews/{reviewId}/reply": {
+      "put": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Publish an owned seller response to a review", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/ReviewId" } ], "responses": { "200": { "description": "Seller response saved" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/wishlist": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List persisted wishlist products", "responses": { "200": { "description": "Wishlist" } } }
+    },
+    "/me/wishlist/{productId}": {
+      "put": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Add an approved product to the wishlist", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Wishlist updated" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Remove a product from the wishlist", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Wishlist updated" } } }
+    },
+    "/me/compare": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List persisted comparison products", "responses": { "200": { "description": "Comparison list" } } }
+    },
+    "/me/compare/{productId}": {
+      "put": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Add an approved product to comparison", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Comparison updated" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Remove a product from comparison", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "Comparison updated" } } }
+    },
+    "/me/recent-products": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List recently viewed approved products", "responses": { "200": { "description": "Recently viewed products" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Clear recently viewed products", "responses": { "200": { "description": "History cleared" } } }
+    },
+    "/me/recent-products/{productId}": {
+      "put": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Record an approved product view", "parameters": [ { "$ref": "#/components/parameters/ProductId" } ], "responses": { "200": { "description": "View recorded" } } }
+    },
+    "/me/followed-sellers": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List followed approved stores", "responses": { "200": { "description": "Followed stores" } } }
+    },
+    "/me/followed-sellers/{sellerId}": {
+      "put": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Follow an approved store", "parameters": [ { "$ref": "#/components/parameters/SellerId" } ], "responses": { "200": { "description": "Store followed" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Unfollow a store", "parameters": [ { "$ref": "#/components/parameters/SellerId" } ], "responses": { "200": { "description": "Store unfollowed" } } }
+    },
+    "/media": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Upload one validated image through configured storage", "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "required": ["image"], "properties": { "image": { "type": "string", "format": "binary" } } } } } }, "responses": { "201": { "description": "Owned media reference" }, "400": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/checkout/quote": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Calculate authoritative checkout totals", "responses": { "201": { "description": "Checkout quote" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/cart": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the persisted cart", "responses": { "200": { "description": "Cart with current sellability" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Add or merge a selected product variant", "responses": { "201": { "description": "Cart line saved" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/cart/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Set an owned cart-line quantity", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartQuantity" } } } }, "responses": { "200": { "description": "Cart line updated" }, "400": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } },
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Remove an owned cart line", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Cart line removed" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/orders": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List the buyer's orders", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" }, { "name": "paginated", "in": "query", "schema": { "type": "boolean" } } ], "responses": { "200": { "description": "Orders" }, "401": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Create an idempotent COD order", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Order created" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/orders/{id}": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the buyer's order and immutable snapshots", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Order detail" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/orders/{id}/cancel": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Cancel eligible seller orders and release reserved stock idempotently", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "200": { "description": "Order cancellation result" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/orders/{id}/returns": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Create an eligible idempotent return, exchange or refund request", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "After-sales request created" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/returns": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List the buyer's return, exchange and refund requests", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "After-sales request page" } } }
+    },
+    "/returns/{id}": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read an owned after-sales request", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "After-sales request" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/orders": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List orders belonging to an owned store", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller order page" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/orders/{orderId}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Move an owned seller order through an allowed fulfilment transition", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/OrderId" } ], "responses": { "200": { "description": "Seller order updated" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/orders/{orderId}/shipment": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Record manual courier tracking for an owned seller order", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/OrderId" } ], "responses": { "200": { "description": "Shipment updated" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/returns": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List after-sales requests involving an owned store", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller after-sales request page" } } }
+    },
+    "/conversations": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "List conversations", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" }, { "name": "paginated", "in": "query", "schema": { "type": "boolean" } } ], "responses": { "200": { "description": "Conversation list" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Idempotently open or reuse a seller/support conversation", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConversationCreate" } } } }, "responses": { "201": { "description": "Conversation" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/activities": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "List notification activities using an ObjectId cursor", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "name": "before", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "Activity page" } } }
+    },
+    "/activities/read": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Mark selected or all notification activities as read", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ActivityRead" } } } }, "responses": { "200": { "description": "Read state updated" }, "400": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/conversations/{id}/messages": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "List conversation messages and mark incoming messages delivered", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "name": "before", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "Cursor-paginated messages" }, "403": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Send a duplicate-safe message with owned media attachments", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessagePayload" } } } }, "responses": { "201": { "description": "Message sent" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/conversations/{id}/read": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Mark incoming conversation messages read", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Read state updated" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/content/{key}": {
+      "get": { "tags": ["Catalog"], "summary": "Read validated public marketplace content and its version", "parameters": [ { "$ref": "#/components/parameters/ContentKey" } ], "responses": { "200": { "description": "Public content" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/wallet": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the authenticated user's ledger-backed wallet", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Wallet balances and entry page", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Wallet" } } } }, "401": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/referral": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the user's referral code, configured rewards and attribution status", "responses": { "200": { "description": "Referral summary" }, "401": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/affiliate": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read affiliate links, clicks, attributed orders and earnings", "responses": { "200": { "description": "Affiliate center" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/affiliate/links": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Create or reuse a product affiliate link", "responses": { "201": { "description": "Affiliate link" }, "400": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/affiliate/click/{code}": {
+      "post": { "tags": ["Commerce"], "summary": "Record an anonymous affiliate link visit", "responses": { "201": { "description": "Click accepted" } } }
+    },
+    "/me/loyalty": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read ledger-backed loyalty points and rules", "responses": { "200": { "description": "Loyalty summary" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/loyalty/redeem": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Redeem loyalty points into Promo Balance using an idempotency key", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Points redeemed" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/gift-cards/redeem": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Redeem a single-use gift card into Promo Balance", "responses": { "200": { "description": "Gift card redeemed" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/membership": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read membership prices and the current entitlement", "responses": { "200": { "description": "Membership status" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/payment-methods": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List masked provider payment-method references", "responses": { "200": { "description": "Saved payment methods" }, "503": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Exchange a one-time provider token for a masked saved reference", "responses": { "201": { "description": "Payment method attached" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/payments": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List purchases and completed refunds for the authenticated buyer", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Payment activity page" } } }
+    },
+    "/me/payment-methods/{id}/default": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Set a saved payment method as default", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Default payment method updated" } } }
+    },
+    "/me/payment-methods/{id}": {
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Detach a saved payment method from its provider", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Payment method removed" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/push-devices": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Register an encrypted provider device-token reference", "responses": { "201": { "description": "Device registered" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/push-devices/{installationId}": {
+      "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Communication"], "summary": "Unregister one app installation", "parameters": [ { "name": "installationId", "in": "path", "required": true, "schema": { "type": "string", "maxLength": 200 } } ], "responses": { "200": { "description": "Device unregistered" } } }
+    },
+    "/coupons": {
+      "get": { "tags": ["Commerce"], "summary": "List currently active public coupon campaigns", "responses": { "200": { "description": "Active coupons", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Coupon" } } } } }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/donation-campaigns": {
+      "get": { "tags": ["Commerce"], "summary": "List active administrator-verified donation campaigns", "responses": { "200": { "description": "Verified campaigns" } } }
+    },
+    "/me/donations": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Start a secure donation payment", "responses": { "201": { "description": "Contribution started" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/withdrawals": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List the authenticated user's withdrawal requests", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Withdrawal page" }, "503": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Reserve earnings and request a withdrawal", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WithdrawalRequestInput" } } } }, "responses": { "201": { "description": "Withdrawal requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Withdrawal" } } } }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/finance": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the authenticated seller's commission and payable ledger", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller finance ledger", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerFinance" } } } }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/me/sellers/{id}/withdrawals": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "List payout requests for the authenticated seller's payable balance", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller payout request page" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Reserve seller payable and request a payout", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WithdrawalRequestInput" } } } }, "responses": { "201": { "description": "Seller payout requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Withdrawal" } } } }, "400": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/operations-summary": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Read actionable marketplace operations counts", "responses": { "200": { "description": "Operations summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationsSummary" } } } }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/system-health": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Monitor failed jobs, payment mismatches, stale fulfilment and backup freshness", "responses": { "200": { "description": "System health snapshot" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/content/{key}": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Update validated public content with optimistic concurrency and an audit reason", "parameters": [ { "$ref": "#/components/parameters/ContentKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContentUpdate" } } } }, "responses": { "201": { "description": "Content updated" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/support/conversations": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration", "Communication"], "summary": "List support conversations", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Support inbox" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/support/conversations/{id}/messages": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration", "Communication"], "summary": "List a support conversation and mark incoming messages delivered", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "name": "before", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "Support message page" }, "403": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration", "Communication"], "summary": "Send a duplicate-safe support reply", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessagePayload" } } } }, "responses": { "201": { "description": "Support reply sent" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/support/conversations/{id}/read": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration", "Communication"], "summary": "Mark customer messages read by support", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Read state updated" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/finance-summary": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Read order payment and refund reconciliation totals", "responses": { "200": { "description": "Finance summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinanceSummary" } } } }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/coupons": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List coupon campaigns", "responses": { "200": { "description": "Coupon campaigns" }, "403": { "$ref": "#/components/responses/Error" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Create an audited coupon campaign", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CouponInput" } } } }, "responses": { "201": { "description": "Coupon created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Coupon" } } } }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/coupons/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Update an audited coupon campaign with optimistic concurrency", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CouponInput" } } } }, "responses": { "200": { "description": "Coupon updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Coupon" } } } }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/gift-cards": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List masked gift cards", "responses": { "200": { "description": "Gift-card page" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Issue a duplicate-safe gift card and return its code once", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Gift card issued" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/gift-cards/{id}/revoke": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Revoke an unused gift card with an audit reason", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Gift card revoked" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/memberships": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List membership entitlements", "responses": { "200": { "description": "Membership page" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Grant a duplicate-safe audited controlled membership entitlement", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Membership granted" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/memberships/{id}/revoke": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Revoke an active membership with an audit reason", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Membership revoked" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/affiliates": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Reconcile affiliate links, clicks, orders and commissions", "responses": { "200": { "description": "Affiliate report page" } } }
+    },
+    "/admin/affiliates/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Enable or disable an affiliate link with an audit reason", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Affiliate link updated" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/notification-campaigns": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List notification campaigns", "responses": { "200": { "description": "Notification campaign page" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Create, schedule or immediately send an audited notification campaign", "responses": { "201": { "description": "Campaign created" } } }
+    },
+    "/admin/notification-campaigns/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Update, send or cancel an undelivered notification campaign", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Campaign updated" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/donation-campaigns": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List donation campaigns", "responses": { "200": { "description": "Campaign page" } } },
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Create an audited donation campaign", "responses": { "201": { "description": "Campaign created" } } }
+    },
+    "/admin/donation-campaigns/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Update a donation campaign with optimistic concurrency and an audit reason", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Campaign updated" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/referrals": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Reconcile referral attribution, pending rewards and reversals", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Referral reconciliation page" } } }
+    },
+    "/admin/loyalty": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Reconcile loyalty awards, redemptions and reversals", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Loyalty reconciliation page" } } }
+    },
+    "/admin/rules": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List versioned marketplace business rules", "responses": { "200": { "description": "Business rules" } } }
+    },
+    "/admin/rules/{key}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Update a validated business rule with optimistic concurrency and an audit reason", "parameters": [ { "$ref": "#/components/parameters/RuleKey" } ], "responses": { "200": { "description": "Business rule updated" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/orders/{id}/status": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Perform an audited operations order-status transition", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Order updated" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/orders/{id}/shipment": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Record audited manual courier tracking", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Shipment updated" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/orders/{id}/cod-collection": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Record an idempotent reconciled COD collection", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "200": { "description": "COD collection recorded" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/returns/{id}/status": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Perform an audited after-sales transition with finance separation", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "After-sales request updated" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/reviews/{id}/status": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Publish or reject a review with an audit reason", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Review moderated" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/users/{id}/roles": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Assign least-privilege administrator responsibilities and revoke existing sessions", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Administrator access updated" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/{resource}": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List one permission-scoped administration resource", "parameters": [ { "$ref": "#/components/parameters/AdminResource" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Administration resource page" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/{resource}/{id}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Moderate a supported resource with an audit reason", "parameters": [ { "$ref": "#/components/parameters/AdminModerationResource" }, { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Resource moderated" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/features": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List super-admin-controlled capability switches", "responses": { "200": { "description": "Capability switches" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/features/{key}": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Enable or disable a capability after validating prerequisites", "parameters": [ { "name": "key", "in": "path", "required": true, "schema": { "type": "string", "enum": ["rewards", "coupons", "affiliate", "loyalty", "gift_cards", "membership"] } } ], "responses": { "200": { "description": "Updated capability" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/withdrawals": {
+      "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "List withdrawal requests for finance review", "parameters": [ { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Withdrawal requests" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/admin/withdrawals/{id}/status": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Administration"], "summary": "Approve, reject or record a completed payout", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WithdrawalStatusInput" } } } }, "responses": { "200": { "description": "Updated withdrawal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Withdrawal" } } } }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    }
+  },
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" } },
+    "parameters": {
+      "Id": { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } },
+      "Limit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+      "Offset": { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ,"ContentKey": { "name": "key", "in": "path", "required": true, "schema": { "type": "string", "enum": ["categories", "home-banners", "home-promotion", "terms-policies", "about", "faq"] } }
+      ,"ProductId": { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } }
+      ,"SellerId": { "name": "sellerId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } }
+      ,"ReviewId": { "name": "reviewId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } }
+      ,"OrderId": { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } }
+      ,"RuleKey": { "name": "key", "in": "path", "required": true, "schema": { "type": "string", "enum": ["promo_usage", "referral", "withdrawal", "membership", "loyalty", "affiliate", "seller_commission"] } }
+      ,"AdminResource": { "name": "resource", "in": "path", "required": true, "schema": { "type": "string", "enum": ["users", "sellers", "products", "orders", "returns", "reviews", "reports", "audit", "withdrawals"] } }
+      ,"AdminModerationResource": { "name": "resource", "in": "path", "required": true, "schema": { "type": "string", "enum": ["users", "sellers", "products", "reports"] } }
+    },
+    "responses": { "Error": { "description": "Structured API error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } },
+    "schemas": {
+      "SellerSubmission": { "type": "object", "required": ["logoId"], "additionalProperties": false, "properties": { "logoId": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } },
+      "CartQuantity": { "type": "object", "required": ["qty"], "additionalProperties": false, "properties": { "qty": { "type": "integer", "minimum": 1, "maximum": 999 } } },
+      "ActivityRead": { "type": "object", "additionalProperties": false, "properties": { "ids": { "type": "array", "maxItems": 100, "items": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } } },
+      "ConversationCreate": { "type": "object", "required": ["kind"], "additionalProperties": false, "properties": { "kind": { "enum": ["support", "seller"] }, "sellerId": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } },
+      "MessagePayload": { "type": "object", "additionalProperties": false, "properties": { "body": { "type": "string", "maxLength": 4000 }, "attachmentIds": { "type": "array", "maxItems": 4, "items": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } }, "anyOf": [ { "required": ["body"] }, { "required": ["attachmentIds"] } ] },
+      "ContentUpdate": { "type": "object", "required": ["data", "reason", "version"], "additionalProperties": false, "properties": { "data": { "oneOf": [ { "type": "array", "maxItems": 100 }, { "type": "object" } ] }, "reason": { "type": "string", "minLength": 3, "maxLength": 500 }, "version": { "type": "integer", "minimum": 0 } } },
+      "Error": {
+        "type": "object",
+        "required": ["message", "error"],
+        "properties": {
+          "message": { "type": "string" },
+          "fields": { "type": "object", "additionalProperties": true },
+          "details": {},
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "fields": { "type": "object", "additionalProperties": true },
+              "details": {}
+            }
+          }
+        }
+      },
+      "RegisterInput": { "type": "object", "required": ["name", "password"], "anyOf": [ { "required": ["email"] }, { "required": ["phone"] } ], "properties": { "name": { "type": "string", "minLength": 2, "maxLength": 120 }, "email": { "type": "string", "format": "email" }, "phone": { "type": "string", "pattern": "^01[0-9]{9}$" }, "password": { "type": "string", "format": "password", "minLength": 10, "maxLength": 200 }, "referralCode": { "type": "string", "pattern": "^LR[A-F0-9]{8}$" } } },
+      "AuthSession": { "type": "object", "required": ["token", "user"], "properties": { "token": { "type": "string" }, "user": { "type": "object" } } },
+      "Features": { "type": "object", "additionalProperties": { "type": "boolean" } },
+      "Product": { "type": "object", "required": ["id", "title", "price"], "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "price": { "type": "number" }, "stock": { "type": "integer" }, "status": { "type": "string" }, "images": { "type": "array", "items": { "type": "object" } } } },
+      "ProductPage": { "type": "object", "required": ["items", "nextOffset"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } }, "nextOffset": { "type": ["integer", "null"] } } },
+      "OperationsSummary": { "type": "object", "required": ["id", "status", "pendingSellers", "pendingProducts", "stuckOrders", "uncollectedCod", "openReturns", "openReports", "generatedAt"], "properties": { "id": { "const": "operations-summary" }, "status": { "enum": ["healthy", "attention"] }, "pendingSellers": { "type": "integer", "minimum": 0 }, "pendingProducts": { "type": "integer", "minimum": 0 }, "stuckOrders": { "type": "integer", "minimum": 0 }, "uncollectedCod": { "type": "integer", "minimum": 0 }, "openReturns": { "type": "integer", "minimum": 0 }, "openReports": { "type": "integer", "minimum": 0 }, "generatedAt": { "type": "string", "format": "date-time" } } },
+      "Coupon": { "type": "object", "required": ["id", "code", "name", "discountType", "discountValue", "minimumOrderMinor", "startsAt", "endAt", "totalLimit", "perUserLimit", "redemptionCount", "enabled", "version"], "properties": { "id": { "type": "string" }, "code": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "discountType": { "enum": ["percent", "fixed"] }, "discountValue": { "type": "integer" }, "minimumOrderMinor": { "type": "integer" }, "maximumDiscountMinor": { "type": "integer" }, "startsAt": { "type": "string", "format": "date-time" }, "endAt": { "type": "string", "format": "date-time" }, "totalLimit": { "type": "integer" }, "perUserLimit": { "type": "integer" }, "redemptionCount": { "type": "integer" }, "enabled": { "type": "boolean" }, "version": { "type": "integer" } } },
+      "CouponInput": { "allOf": [ { "$ref": "#/components/schemas/Coupon" }, { "type": "object", "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 3 } } } ] },
+      "SellerFinance": { "type": "object", "required": ["currency", "balanceMinor", "commission", "entries", "nextOffset"], "properties": { "currency": { "const": "BDT" }, "balanceMinor": { "type": "integer" }, "commission": { "type": "object", "required": ["platformFeePercent"], "properties": { "platformFeePercent": { "type": "integer", "minimum": 0, "maximum": 100 } } }, "entries": { "type": "array", "items": { "type": "object", "required": ["id", "amountMinor", "reference", "createdAt"], "properties": { "id": { "type": "string" }, "amountMinor": { "type": "integer" }, "reference": { "type": "string" }, "metadata": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" } } } }, "nextOffset": { "type": ["integer", "null"] } } },
+      "FinanceSummary": { "type": "object", "required": ["id", "currency", "orderCount", "originalOrderMinor", "currentPayableMinor", "collectedMinor", "refundedMinor", "netCollectedMinor", "outstandingCodOrders", "promoLiabilityMinor", "earningsLiabilityMinor", "pendingEarningsMinor", "sellerPayableMinor", "openWithdrawalMinor", "openWithdrawalCount", "paidWithdrawalMinor", "generatedAt"], "properties": { "id": { "const": "finance-summary" }, "currency": { "const": "BDT" }, "orderCount": { "type": "integer", "minimum": 0 }, "originalOrderMinor": { "type": "integer" }, "currentPayableMinor": { "type": "integer" }, "collectedMinor": { "type": "integer" }, "refundedMinor": { "type": "integer" }, "netCollectedMinor": { "type": "integer" }, "outstandingCodOrders": { "type": "integer", "minimum": 0 }, "promoLiabilityMinor": { "type": "integer" }, "earningsLiabilityMinor": { "type": "integer" }, "pendingEarningsMinor": { "type": "integer" }, "sellerPayableMinor": { "type": "integer" }, "openWithdrawalMinor": { "type": "integer", "minimum": 0 }, "openWithdrawalCount": { "type": "integer", "minimum": 0 }, "paidWithdrawalMinor": { "type": "integer", "minimum": 0 }, "generatedAt": { "type": "string", "format": "date-time" } } },
+      "Wallet": { "type": "object", "required": ["currency", "balances", "withdrawal", "promo", "entries", "nextOffset"], "properties": { "currency": { "const": "BDT" }, "balances": { "type": "object", "required": ["promo", "earnings", "pending_earnings"], "additionalProperties": { "type": "integer" } }, "withdrawal": { "type": "object", "required": ["minimumMinor", "feeMinor", "allowedMethods"], "properties": { "minimumMinor": { "type": "integer" }, "feeMinor": { "type": "integer" }, "allowedMethods": { "type": "array", "items": { "enum": ["bkash", "nagad", "bank"] } } } }, "promo": { "type": "object", "required": ["maxDiscountPercent", "minimumOrderMinor", "expiryDays"], "properties": { "maxDiscountPercent": { "type": "integer", "minimum": 1, "maximum": 100 }, "minimumOrderMinor": { "type": "integer", "minimum": 0 }, "expiryDays": { "type": "integer", "minimum": 1 } } }, "entries": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "amountMinor", "reference", "createdAt"], "properties": { "id": { "type": "string" }, "kind": { "type": "string" }, "amountMinor": { "type": "integer" }, "reference": { "type": "string" }, "metadata": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" } } } }, "nextOffset": { "type": ["integer", "null"] } } },
+      "WithdrawalRequestInput": { "type": "object", "required": ["amountMinor", "destination"], "additionalProperties": false, "properties": { "amountMinor": { "type": "integer", "minimum": 1 }, "destination": { "type": "object", "required": ["method", "account"], "additionalProperties": false, "properties": { "method": { "enum": ["bkash", "nagad", "bank"] }, "account": { "type": "string", "minLength": 5, "maxLength": 100 } } } } },
+      "WithdrawalStatusInput": { "type": "object", "required": ["status", "version", "reason"], "additionalProperties": false, "properties": { "status": { "enum": ["approved", "rejected", "paid"] }, "version": { "type": "integer", "minimum": 0 }, "reason": { "type": "string", "minLength": 3, "maxLength": 500 }, "settlement": { "type": "object", "required": ["reference", "paidAt"], "properties": { "reference": { "type": "string" }, "paidAt": { "type": "string", "format": "date-time" } } } } },
+      "Withdrawal": { "type": "object", "required": ["id", "sourceKind", "amountMinor", "feeMinor", "payoutMinor", "currency", "destination", "status", "version"], "properties": { "id": { "type": "string" }, "sourceKind": { "enum": ["earnings", "seller_payable"] }, "sellerId": { "type": "string" }, "sellerName": { "type": "string" }, "amountMinor": { "type": "integer" }, "feeMinor": { "type": "integer" }, "payoutMinor": { "type": "integer" }, "currency": { "const": "BDT" }, "destination": { "type": "object" }, "status": { "enum": ["requested", "approved", "rejected", "paid"] }, "version": { "type": "integer" }, "settlement": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" } } }
+    }
+  }
+}

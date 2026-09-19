@@ -1,0 +1,8 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {User,Session}=require('../models/account.model');
+const AccountController=require('../controllers/account.controller');
+const response=()=>({payload:null,json(value){this.payload=value;return value;}});
+test('session management revokes only owned non-current sessions',async()=>{const mongo=await MongoMemoryServer.create();try{await mongoose.connect(mongo.getUri('session_management_test'));const [owner,other]=await User.create([{name:'Owner',email:'session-owner@test.local',passwordHash:'x'},{name:'Other',email:'session-other@test.local',passwordHash:'x'}]),expiresAt=new Date(Date.now()+86400000),[current,target,foreign]=await Session.create([{user:owner._id,jtiHash:'current',expiresAt},{user:owner._id,jtiHash:'target',expiresAt},{user:other._id,jtiHash:'foreign',expiresAt}]),controller=new AccountController();await assert.rejects(controller.revoke({params:{id:String(current._id)},auth:{user:owner,session:current}},response()),error=>error.status===400);await assert.rejects(controller.revoke({params:{id:String(foreign._id)},auth:{user:owner,session:current}},response()),error=>error.status===404);const res=response();await controller.revokeOthers({auth:{user:owner,session:current}},res);assert.equal(res.payload.revoked,1);assert.equal((await Session.findById(current._id)).revokedAt,undefined);assert.ok((await Session.findById(target._id)).revokedAt);assert.equal((await Session.findById(foreign._id)).revokedAt,undefined);}finally{await mongoose.disconnect();await mongo.stop();}});

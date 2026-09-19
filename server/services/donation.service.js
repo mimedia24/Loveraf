@@ -1,0 +1,13 @@
+const {DonationCampaign}=require('../models/marketing.model');
+const {Feature,AuditEvent}=require('../models/system.model');
+const {AppError,badRequest,notFound,conflict}=require('../utils/errors');
+const json=row=>({id:String(row._id),name:row.title,title:row.title,description:row.description,goalMinor:row.goalMinor,raisedMinor:row.raisedMinor,status:row.status,verified:row.verified,startsAt:row.startsAt,endsAt:row.endsAt,version:row.version,createdAt:row.createdAt});
+async function listPublicCampaigns(){const now=new Date(),rows=await DonationCampaign.find({status:'active',verified:true,startsAt:{$lte:now},endsAt:{$gt:now}}).sort({endsAt:1}).lean();return rows.map(json);}
+async function listAdminCampaigns(query={}){const limit=Math.min(100,Math.max(1,Number(query.limit)||50)),offset=Math.max(0,Number(query.offset)||0),rows=await DonationCampaign.find().sort({createdAt:-1,_id:-1}).skip(offset).limit(limit+1).lean();return {items:rows.slice(0,limit).map(json),nextOffset:rows.length>limit?offset+limit:null};}
+async function saveCampaign({id,input,actor}){const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(endsAt<=startsAt)throw badRequest('Campaign end must be after its start.');let campaign;
+  if(id){campaign=await DonationCampaign.findById(id);if(!campaign)throw notFound();if(campaign.version!==input.version)throw conflict('This campaign changed. Reload first.');campaign=await DonationCampaign.findOneAndUpdate({_id:id,version:input.version},{$set:{title:input.title,description:input.description,goalMinor:input.goalMinor,startsAt,endsAt,status:input.status,verified:input.verified,updatedBy:actor},$inc:{version:1}},{new:true});if(!campaign)throw conflict('This campaign changed. Reload first.');}
+  else campaign=await DonationCampaign.create({title:input.title,description:input.description,goalMinor:input.goalMinor,startsAt,endsAt,status:input.status,verified:input.verified,createdBy:actor,updatedBy:actor});
+  await AuditEvent.create({actor,action:id?'donation_campaign.update':'donation_campaign.create',target:String(campaign._id),reason:input.reason,metadata:{status:campaign.status,verified:campaign.verified,goalMinor:campaign.goalMinor}});return json(campaign);
+}
+async function createContribution(){if(!await Feature.exists({key:'online_payment',enabled:true}))throw new AppError(503,'PROVIDER_UNAVAILABLE','Secure donation payment is not available yet.');throw new AppError(503,'PROVIDER_UNAVAILABLE','Donation payment provider is not configured.');}
+module.exports={listPublicCampaigns,listAdminCampaigns,saveCampaign,createContribution};

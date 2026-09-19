@@ -1,0 +1,44 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {Order,ReturnRequest}=require('../models/commerce.model');
+const {PaymentMethod}=require('../models/account.model');
+const {Product,ProductEngagement,Review}=require('../models/catalog.model');
+const {Conversation,Message,Activity,DeviceToken}=require('../models/communication.model');
+const {LedgerAccount,LedgerEntry,WithdrawalRequest,OperationalRun}=require('../models/system.model');
+const {Coupon,CouponRedemption,CouponUsage,Referral,LoyaltyEntry,GiftCard,MembershipEntitlement,DonationCampaign,AffiliateLink,AffiliateAttribution,NotificationCampaign}=require('../models/marketing.model');
+
+const has=(model,expected)=>model.schema.indexes().some(([fields])=>Object.entries(expected).every(([key,value])=>fields[key]===value));
+
+test('high-volume list queries have matching compound indexes',()=>{
+  assert.ok(has(Product,{status:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Product,{seller:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Product,{status:1,soldUnits:-1,createdAt:-1,_id:-1}));
+  assert.ok(has(Product,{status:1,priceMinor:1,_id:1}));
+  assert.ok(has(ProductEngagement,{user:1,kind:1,updatedAt:-1}));
+  assert.ok(has(Review,{seller:1,status:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Order,{user:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Order,{'sellerOrders.seller':1,createdAt:-1,_id:-1}));
+  assert.ok(has(ReturnRequest,{seller:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Conversation,{members:1,lastMessageAt:-1,_id:-1}));
+  assert.ok(has(Message,{conversation:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Activity,{user:1,_id:-1}));
+  assert.ok(has(Activity,{pushStatus:1,pushAttempts:1,createdAt:1}));
+  assert.ok(has(DeviceToken,{user:1,installationId:1}));
+  assert.ok(has(LedgerAccount,{owner:1,kind:1,currency:1}));
+  assert.ok(has(LedgerEntry,{account:1,reference:1}));
+  assert.ok(has(LedgerEntry,{account:1,createdAt:-1,_id:-1}));
+  assert.ok(has(WithdrawalRequest,{owner:1,createdAt:-1,_id:-1}));
+  assert.ok(has(WithdrawalRequest,{status:1,createdAt:-1,_id:-1}));
+  assert.ok(has(Coupon,{enabled:1,startsAt:1,endAt:1}));
+  assert.ok(has(CouponRedemption,{coupon:1,user:1,status:1}));
+  assert.ok(has(CouponUsage,{coupon:1,user:1}));
+  assert.ok(has(Referral,{status:1,eligibleAt:1}));
+  assert.ok(has(LoyaltyEntry,{owner:1,createdAt:-1,_id:-1}));
+  assert.ok(has(MembershipEntitlement,{user:1,status:1,endsAt:-1}));
+  assert.ok(has(DonationCampaign,{status:1,startsAt:1,endsAt:1}));
+  assert.ok(has(AffiliateLink,{owner:1,product:1}));
+  assert.ok(has(AffiliateAttribution,{status:1,eligibleAt:1}));
+  assert.ok(has(NotificationCampaign,{status:1,scheduledAt:1}));
+  assert.ok(has(PaymentMethod,{user:1,isDefault:-1,createdAt:-1}));
+  assert.ok(has(OperationalRun,{kind:1,status:1,completedAt:-1}));
+});

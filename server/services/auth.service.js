@@ -22,11 +22,23 @@ class AuthService{
   async register(input){
     if(!input.email&&!input.phone)throw badRequest('Email or phone is required.');
     const passwordHash=await bcrypt.hash(input.password,12);
-    const user=await User.create({name:input.name,email:input.email?normalize(input.email):undefined,phone:input.phone?.trim(),passwordHash});
+    const mongoose=require('mongoose');const {assignReferralCode,attributeReferral}=require('./referral.service');let user;
+    await mongoose.connection.transaction(async session=>{[user]=await User.create([{name:input.name,email:input.email?normalize(input.email):undefined,phone:input.phone?.trim(),passwordHash}],{session});await assignReferralCode(user,session);await attributeReferral({invitee:user,code:input.referralCode,session});});
     return this.issue(user,input.device);
   }
-  async login(input){
-    const login=normalize(input.login);const user=await User.findOne({$or:[{email:login},{phone:input.login.trim()}]}).select('+passwordHash');
+  async registerSeller(input){
+    const {Seller}=require('../models/account.model');
+    const mongoose=require('mongoose');
+    let user;
+    const passwordHash=await bcrypt.hash(input.password,12);
+    await mongoose.connection.transaction(async session=>{
+      [user]=await User.create([{name:input.name,email:normalize(input.email),phone:input.phone,passwordHash,accountType:'seller',roles:['seller']}],{session});
+      await Seller.create([{user:user._id,name:input.name,handle:input.handle,category:input.category,email:normalize(input.email),phone:input.phone,address:input.address,status:'draft'}],{session});
+    });
+    return this.issue(user);
+  }
+  async login(input,accountType='personal'){
+    const login=normalize(input.login);const user=await User.findOne({$and:[accountType==='seller'?{accountType:'seller'}:{$or:[{accountType:'personal'},{accountType:{$exists:false}}]},{$or:[{email:login},{phone:input.login.trim()}]}]}).select('+passwordHash');
     if(!user||!await bcrypt.compare(input.password,user.passwordHash))throw unauthorized('Incorrect login or password.');
     if(user.suspended)throw forbidden('This account is suspended.');
     return this.issue(user,input.device);
@@ -43,7 +55,7 @@ class AuthService{
     return this.createChallenge(user,target,input.channel,input.purpose);
   }
   async recovery(input){
-    const login=normalize(input.login);const user=await User.findOne({$or:[{email:login},{phone:input.login.trim()}]});
+    const login=normalize(input.login);const user=await User.findOne({accountType:{$ne:'seller'},$or:[{email:login},{phone:input.login.trim()}]});
     if(!user)return {accepted:true,challengeId:new (require('mongoose').Types.ObjectId)().toString(),expiresInSeconds:600};
     const channel=input.channel||(login.includes('@')?'email':'phone'),target=channel==='email'?user.email:user.phone;
     if(!target||(channel==='email'&&!user.emailVerified)||(channel==='phone'&&!user.phoneVerified))return {accepted:true,challengeId:new (require('mongoose').Types.ObjectId)().toString(),expiresInSeconds:600};
@@ -77,6 +89,6 @@ class AuthService{
   }
   async reauthenticate(user,password){const withHash=await User.findById(user._id).select('+passwordHash');if(!await bcrypt.compare(password,withHash.passwordHash))throw unauthorized('Password is incorrect.');return {ok:true};}
   requireVerified(user){if(!user.emailVerified&&!user.phoneVerified)throw forbidden('Verify your email or mobile number first.');}
-  requireAdmin(auth,roles=[]){if(!auth.user.roles.some(role=>role==='super_admin'||roles.includes(role)))throw forbidden();if(!auth.session.mfaAt||Date.now()-auth.session.mfaAt.getTime()>15*60000)throw forbidden('Administrator MFA is required.');}
+  requireAdmin(auth,roles=[]){if(!auth.user.roles.some(role=>role==='super_admin'||roles.includes(role)))throw forbidden();if(process.env.ADMIN_REQUIRE_MFA==='true'&&(!auth.session.mfaAt||Date.now()-auth.session.mfaAt.getTime()>15*60000))throw forbidden('Administrator MFA is required.');}
 }
 module.exports={AuthService,digest};

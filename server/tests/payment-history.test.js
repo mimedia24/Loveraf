@@ -1,0 +1,7 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {Order,ReturnRequest}=require('../models/commerce.model');
+const {paymentHistory}=require('../services/payment-history.service');
+test('payment history combines buyer purchases and completed refunds without destination accounts',async()=>{const mongo=await MongoMemoryServer.create();try{await mongoose.connect(mongo.getUri('payment_history_test'));const user=new mongoose.Types.ObjectId(),other=new mongoose.Types.ObjectId(),order=await Order.create({user,status:'delivered',currency:'BDT',totalMinor:400000,paymentMethod:'cod',payment:{provider:'cod',status:'paid',reference:'COD-001',amountMinor:400000,collectedAt:new Date('2026-01-01')}});await Order.create({user:other,totalMinor:999,paymentMethod:'cod'});await ReturnRequest.create({user,order:order._id,seller:new mongoose.Types.ObjectId(),type:'return',reason:'Damaged item',status:'refunded',amountMinor:80000,currency:'BDT',settlement:{method:'bkash',reference:'RF-001',amountMinor:80000,paidAt:new Date('2026-01-02')}});const result=await paymentHistory(user);assert.equal(result.items.length,2);assert.equal(result.items[0].type,'refund');assert.equal(result.items[0].amountMinor,80000);assert.equal(result.items[0].account,undefined);assert.equal(result.items[1].reference,'COD-001');}finally{await mongoose.disconnect();await mongo.stop();}});

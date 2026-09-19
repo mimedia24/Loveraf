@@ -1,0 +1,11 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {User}=require('../models/account.model');
+const {Activity}=require('../models/communication.model');
+const {NotificationCampaign}=require('../models/marketing.model');
+const {AuditEvent}=require('../models/system.model');
+const {saveCampaign,processScheduledCampaigns}=require('../services/notification-campaign.service');
+
+test('notification campaigns target accounts, respect promo opt-out and deliver scheduled work once',async()=>{const mongo=await MongoMemoryServer.create();try{await mongoose.connect(mongo.getUri('notification_campaign_test'));await Promise.all([User.init(),Activity.init(),NotificationCampaign.init(),AuditEvent.init()]);const admin=new mongoose.Types.ObjectId(),[buyer,optedOut,seller]=await User.create([{name:'Buyer',email:'notify-buyer@test.local',passwordHash:'x',preferences:{offers:true}},{name:'Private buyer',email:'notify-private@test.local',passwordHash:'x',preferences:{offers:false}},{name:'Seller',email:'notify-seller@test.local',passwordHash:'x',accountType:'seller'}]);const sent=await saveCampaign({actor:admin,input:{title:'Weekend offer',body:'Save on selected products.',category:'promo',audience:'all',action:'send',reason:'Approved campaign'}});assert.equal(sent.status,'sent');assert.equal(await Activity.countDocuments({campaign:sent.id}),2);assert.equal(await Activity.countDocuments({user:optedOut._id,campaign:sent.id}),0);const scheduled=await saveCampaign({actor:admin,input:{title:'Account notice',body:'Review your account details.',category:'alert',audience:'personal',scheduledAt:new Date(Date.now()+60000).toISOString(),action:'schedule',reason:'Service notice'}});await NotificationCampaign.updateOne({_id:scheduled.id},{$set:{scheduledAt:new Date(Date.now()-1000)}});assert.deepEqual(await processScheduledCampaigns(),{processed:1,failed:0});assert.equal(await Activity.countDocuments({campaign:scheduled.id}),2);await processScheduledCampaigns();assert.equal(await Activity.countDocuments({campaign:scheduled.id}),2);assert.equal(await Activity.countDocuments({user:seller._id,campaign:scheduled.id}),0);}finally{await mongoose.disconnect();await mongo.stop();}});

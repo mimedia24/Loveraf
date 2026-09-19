@@ -1,0 +1,10 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const {MongoMemoryServer}=require('mongodb-memory-server');
+const {Order}=require('../models/commerce.model');
+const {Activity}=require('../models/communication.model');
+const {NotificationCampaign}=require('../models/marketing.model');
+const {OperationalRun}=require('../models/system.model');
+const AdminController=require('../controllers/admin.controller');
+test('system health surfaces failed jobs, payment mismatches and backup freshness',async()=>{const mongo=await MongoMemoryServer.create();try{await mongoose.connect(mongo.getUri('system_health_test'));const user=new mongoose.Types.ObjectId();await Promise.all([Activity.create({user,category:'alert',title:'Failed push',pushStatus:'failed'}),NotificationCampaign.create({title:'Failed campaign',body:'Delivery failed',category:'alert',audience:'all',status:'failed'}),Order.create({user,status:'delivered',totalMinor:10000,pricingSnapshot:{totalMinor:10000},payment:{status:'paid',amountMinor:9000}}),OperationalRun.create({kind:'backup',status:'succeeded',startedAt:new Date(),completedAt:new Date(),summary:{collections:1}})]);let payload;await new AdminController().systemHealth({}, {json:value=>{payload=value;}});assert.equal(payload.status,'attention');assert.equal(payload.failedPush,1);assert.equal(payload.failedCampaigns,1);assert.equal(payload.paymentMismatches,1);assert.equal(payload.backup.healthy,true);}finally{await mongoose.disconnect();await mongo.stop();}});

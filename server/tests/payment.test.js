@@ -1,0 +1,50 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const mongoose=require('mongoose');
+const {MongoMemoryReplSet}=require('mongodb-memory-server');
+const {Order}=require('../models/commerce.model');
+const {AuditEvent}=require('../models/system.model');
+const {Activity}=require('../models/communication.model');
+const {settleCod}=require('../services/payment.service');
+const {transitionSellerOrder}=require('../services/order.service');
+
+test('COD collection requires terminal delivery, exact evidence and is recorded once',async()=>{
+  const replica=await MongoMemoryReplSet.create({replSet:{count:1}});
+  try{
+    await mongoose.connect(replica.getUri('payment_test'));
+    await Promise.all([Order.init(),AuditEvent.init(),Activity.init()]);
+    const user=new mongoose.Types.ObjectId(),actor=new mongoose.Types.ObjectId(),seller=new mongoose.Types.ObjectId();
+    const create=status=>Order.create({user,status,paymentMethod:'cod',totalMinor:14500,payment:{provider:'cash',status:'pending'},sellerOrders:[{seller,status}],lines:[]});
+    const pending=await create('shipped');
+    const evidence={reference:'COD-SETTLE-001',amountMinor:14500,collectedAt:pending.createdAt.toISOString(),version:0};
+    await assert.rejects(settleCod({orderId:pending.id,input:evidence,actor}),/after every seller part/);
+    const delivered=await create('delivered');
+    evidence.collectedAt=delivered.createdAt.toISOString();
+    await assert.rejects(settleCod({orderId:delivered.id,input:{...evidence,amountMinor:1},actor}),/match the current payable/);
+    const outcomes=await Promise.allSettled([settleCod({orderId:delivered.id,input:evidence,actor}),settleCod({orderId:delivered.id,input:evidence,actor})]);
+    assert.equal(outcomes.filter(item=>item.status==='fulfilled').length,1);
+    const saved=await Order.findById(delivered.id);
+    assert.equal(saved.payment.status,'paid');
+    assert.equal(saved.payment.version,1);
+    assert.equal(saved.payment.reference,evidence.reference);
+    assert.equal(await AuditEvent.countDocuments({target:delivered.id,action:'payment.cod_collected'}),1);
+    assert.equal(await Activity.countDocuments({user,title:'COD payment received'}),1);
+    const another=await create('delivered');
+    evidence.collectedAt=another.createdAt.toISOString();
+    await assert.rejects(settleCod({orderId:another.id,input:evidence,actor}),error=>error.code===11000);
+    assert.equal((await Order.findById(another.id)).payment.status,'pending');
+    const sellerTwo=new mongoose.Types.ObjectId();
+    const split=await Order.create({user,status:'confirmed',paymentMethod:'cod',subtotalMinor:20000,discountMinor:0,deliveryMinor:0,feeMinor:4000,totalMinor:24000,pricingSnapshot:{subtotalMinor:20000,discountMinor:0,deliveryMinor:0,feeMinor:4000,totalMinor:24000},payment:{provider:'cash',status:'pending'},sellerOrders:[{seller,status:'confirmed',subtotalMinor:10000},{seller:sellerTwo,status:'confirmed',subtotalMinor:10000}],lines:[]});
+    await transitionSellerOrder({orderId:split.id,sellerId:seller,status:'cancelled',reason:'Seller cannot fulfil this item.',actor,version:0});
+    let splitSaved=await Order.findById(split.id);
+    assert.equal(splitSaved.subtotalMinor,10000);assert.equal(splitSaved.totalMinor,14000);
+    assert.equal(splitSaved.pricingSnapshot.subtotalMinor,20000);assert.equal(splitSaved.pricingSnapshot.totalMinor,24000);
+    await transitionSellerOrder({orderId:split.id,sellerId:sellerTwo,status:'packing',actor,version:0});
+    await transitionSellerOrder({orderId:split.id,sellerId:sellerTwo,status:'shipped',actor,version:1});
+    await transitionSellerOrder({orderId:split.id,sellerId:sellerTwo,status:'delivered',actor,version:2});
+    splitSaved=await Order.findById(split.id);
+    assert.equal(splitSaved.status,'completed');
+    await settleCod({orderId:split.id,actor,input:{reference:'COD-SPLIT-001',amountMinor:14000,collectedAt:new Date().toISOString(),version:0}});
+    assert.equal((await Order.findById(split.id)).payment.amountMinor,14000);
+  }finally{await mongoose.disconnect();await replica.stop();}
+});

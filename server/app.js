@@ -16,18 +16,21 @@ const catalogRoutes=require('./routes/catalog.routes');
 const commerceRoutes=require('./routes/commerce.routes');
 const communicationRoutes=require('./routes/communication.routes');
 const adminRoutes=require('./routes/admin.routes');
+const marketingRoutes=require('./routes/marketing.routes');
 const {configureSocket}=require('./socket/socket');
 const mongoose=require('mongoose');
 const {parseOrigins}=require('./config/environment');
+const openapi=require('./docs/openapi.json');
 function createApplication(options={}){
   const app=express(),server=http.createServer(app),origins=parseOrigins(),authService=new AuthService(options.deliver||providerDelivery);
   const io=configureSocket(server,authService,origins),requireAuth=authMiddleware(authService),role=roles=>roleMiddleware(authService,roles);
-  app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({crossOriginResourcePolicy:{policy:'cross-origin'}}));app.use(cors({origin:origins.length?origins:true,credentials:true}));app.use(cookieParser());app.use(express.json({limit:'2mb'}));app.use(express.urlencoded({extended:false,limit:'2mb'}));app.use('/uploads',express.static(path.join(process.cwd(),'uploads')));
+  app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({crossOriginResourcePolicy:{policy:'cross-origin'}}));app.use(cors({origin:origins.length?origins:true,credentials:true}));app.use(cookieParser());app.use(express.json({limit:'2mb'}));app.use(express.urlencoded({extended:false,limit:'2mb'}));app.use('/uploads',express.static(path.resolve(process.env.UPLOAD_DIR||path.join(process.cwd(),'uploads')),{dotfiles:'deny',index:false}));
   const live=(_req,res)=>res.json({status:'ok'});
   const ready=(_req,res)=>{const connected=mongoose.connection.readyState===1;res.status(connected?200:503).json({status:connected?'ok':'unavailable',checks:{mongodb:connected?'connected':'disconnected'}});};
   app.get('/health/live',live);app.get('/health/ready',ready);app.get('/health',ready);
+  app.get('/api/v1/openapi.json',(_req,res)=>res.json(openapi));
   const authLimiter=rateLimit({windowMs:15*60*1000,limit:50,standardHeaders:true,legacyHeaders:false});app.use('/api/v1/auth',authLimiter,authRoutes(authService,requireAuth));
-  const catalog=catalogRoutes(authService,requireAuth,uploadMedia);app.use('/api/v1',catalog.publicRouter);app.use('/api/v1',catalog.privateRouter);app.use('/api/v1',accountRoutes(requireAuth));app.use('/api/v1',commerceRoutes(requireAuth));app.use('/api/v1',communicationRoutes(requireAuth,io));app.use('/api/v1',adminRoutes(requireAuth,role));
+  const catalog=catalogRoutes(authService,requireAuth,uploadMedia);app.use('/api/v1',catalog.publicRouter);app.use('/api/v1',marketingRoutes());app.use('/api/v1',catalog.privateRouter);app.use('/api/v1',accountRoutes(requireAuth));app.use('/api/v1',commerceRoutes(requireAuth));app.use('/api/v1',communicationRoutes(requireAuth,io,role));app.use('/api/v1',adminRoutes(requireAuth,role));
   app.use(notFoundHandler);app.use(errorHandler);return {app,server,io,authService};
 }
 module.exports={createApplication};
