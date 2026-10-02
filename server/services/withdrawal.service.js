@@ -7,15 +7,15 @@ const {AppError,badRequest,notFound,conflict}=require('../utils/errors');
 
 const json=item=>({id:String(item._id),sourceKind:item.sourceKind||'earnings',sellerId:item.seller?String(item.seller._id||item.seller):undefined,sellerName:item.seller?.name,amountMinor:item.amountMinor,feeMinor:item.feeMinor,payoutMinor:item.payoutMinor,currency:item.currency,destination:item.destination,status:item.status,version:item.version,history:item.history||[],settlement:item.settlement?.reference?item.settlement:undefined,createdAt:item.createdAt,updatedAt:item.updatedAt});
 
-async function withdrawalRule(){
-  if(!await rewardsAvailable())throw new AppError(503,'PROVIDER_UNAVAILABLE','Withdrawals are not available yet.');
+async function withdrawalRule({requireRewards=true}={}){
+  if(requireRewards&&!await rewardsAvailable())throw new AppError(503,'PROVIDER_UNAVAILABLE','Withdrawals are not available yet.');
   const rule=await BusinessRule.findOne({key:'withdrawal',enabled:true}).lean();
   if(!rule)throw new AppError(503,'PROVIDER_UNAVAILABLE','Withdrawals are not available yet.');
   return validateBusinessRule('withdrawal',true,rule.data);
 }
 
 async function createWithdrawal({owner,input,key,sourceKind='earnings',seller}){
-  const rule=await withdrawalRule();
+  const rule=await withdrawalRule({requireRewards:sourceKind!=='seller_payable'});
   if(input.amountMinor<rule.minimumMinor)throw badRequest(`Minimum withdrawal is BDT ${(rule.minimumMinor/100).toFixed(2)}.`);
   if(!rule.allowedMethods.includes(input.destination.method))throw badRequest('This withdrawal method is not enabled.');
   if(input.amountMinor<=rule.feeMinor)throw badRequest('Withdrawal amount must be greater than the fee.');
@@ -34,7 +34,7 @@ async function createWithdrawal({owner,input,key,sourceKind='earnings',seller}){
 }
 
 async function listWithdrawals(owner,query={},filter={sourceKind:'earnings'}){
-  await withdrawalRule();
+  await withdrawalRule({requireRewards:filter.sourceKind!=='seller_payable'});
   const limit=Math.min(100,Math.max(1,Number(query.limit)||20)),offset=Math.max(0,Number(query.offset)||0);
   const rows=await WithdrawalRequest.find({owner,...filter}).sort({createdAt:-1,_id:-1}).skip(offset).limit(limit+1);
   return {items:rows.slice(0,limit).map(json),nextOffset:rows.length>limit?offset+limit:null};
@@ -56,4 +56,4 @@ async function transitionWithdrawal({id,input,actor}){
   });
 }
 
-module.exports={createWithdrawal,listWithdrawals,transitionWithdrawal,json};
+module.exports={withdrawalRule,createWithdrawal,listWithdrawals,transitionWithdrawal,json};

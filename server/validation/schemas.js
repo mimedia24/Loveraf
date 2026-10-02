@@ -1,7 +1,15 @@
 const { z } = require("zod");
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
 const uuid = z.string().uuid();
-const password = z.string().min(10).max(200);
+const password = z.string().min(6, "Password must contain at least 6 characters.").max(200);
+const loginPassword = z.string().min(1, "Enter your password.").max(200);
+const sellerLocation = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).max(100000),
+  address: z.string().trim().min(5).max(500),
+  capturedAt: z.iso.datetime(),
+}).strict();
 const optionalEmail = z.preprocess(
   (value) => (typeof value === "string" && !value.trim() ? undefined : value),
   z.string().trim().email().optional(),
@@ -27,12 +35,9 @@ const auth = {
           .trim()
           .regex(/^01\d{9}$/),
         password,
-        handle: z
-          .string()
-          .trim()
-          .regex(/^[a-z0-9][a-z0-9_-]{2,39}$/i),
-        category: z.string().trim().min(2).max(100),
+        categoryId: z.string().trim().min(1).max(100),
         address: z.string().trim().min(5).max(500),
+        location: sellerLocation,
       })
       .strict(),
   ),
@@ -56,7 +61,7 @@ const auth = {
     z
       .object({
         login: z.string().trim().min(3).max(200),
-        password,
+        password: loginPassword,
         device: z.record(z.string(), z.any()).optional(),
       })
       .strict(),
@@ -91,10 +96,10 @@ const auth = {
       })
       .strict(),
   ),
-  reauth: body(z.object({ password }).strict()),
+  reauth: body(z.object({ password: loginPassword }).strict()),
   changePassword: body(
     z
-      .object({ currentPassword: password, newPassword: password })
+      .object({ currentPassword: loginPassword, newPassword: password })
       .strict()
       .refine((value) => value.currentPassword !== value.newPassword, {
         message: "Choose a different new password.",
@@ -127,8 +132,7 @@ const product = body(
     .object({
       title: z.string().trim().min(3).max(240),
       description: z.string().trim().min(10).max(10000),
-      category: z.string().trim().min(2).max(100),
-      sku: z.string().trim().min(2).max(100),
+      categoryId: z.string().trim().min(1).max(100),
       price: z.number().positive(),
       oldPrice: z.number().positive().optional(),
       stock: z.number().int().min(0).max(1000000),

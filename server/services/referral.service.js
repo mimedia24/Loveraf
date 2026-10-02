@@ -5,11 +5,11 @@ const {Referral}=require('../models/marketing.model');
 const {BusinessRule,LedgerAccount,LedgerEntry}=require('../models/system.model');
 const {Activity}=require('../models/communication.model');
 const {AppError,badRequest,conflict}=require('../utils/errors');
-const {rewardsAvailable,validateBusinessRule}=require('./business-rule.service');
+const {featureReadiness,validateBusinessRule}=require('./business-rule.service');
 
 const newCode=()=>`LR${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 async function referralRule(){
-  if(!await rewardsAvailable())throw new AppError(503,'PROVIDER_UNAVAILABLE','Referrals are not available yet.');
+  if(!(await featureReadiness('referral')).ready)throw new AppError(503,'PROVIDER_UNAVAILABLE','Referrals are not available yet.');
   const document=await BusinessRule.findOne({key:'referral',enabled:true}).lean();
   return validateBusinessRule('referral',true,document?.data);
 }

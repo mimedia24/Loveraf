@@ -20,6 +20,7 @@ function validateContent(key, data) {
     valid =
       Array.isArray(data) &&
       data.length <= 50 &&
+      new Set(data.map((item) => item?.id)).size === data.length &&
       data.every(
         (item) =>
           item &&

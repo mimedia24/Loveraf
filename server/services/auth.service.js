@@ -1,7 +1,8 @@
 const crypto=require('node:crypto');
 const bcrypt=require('bcryptjs');
 const jwt=require('jsonwebtoken');
-const {User,Session,Verification}=require('../models/account.model');
+const {User,Session,Verification,Seller}=require('../models/account.model');
+const {Content}=require('../models/system.model');
 const {AppError,badRequest,unauthorized,forbidden,notFound}=require('../utils/errors');
 const serialize=require('../utils/serializers');
 
@@ -9,6 +10,8 @@ const normalize=value=>String(value||'').trim().toLowerCase();
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const otpDigest=(challenge,code)=>crypto.createHmac('sha256',process.env.OTP_HMAC_SECRET||'test-only-otp-secret').update(`${challenge}:${code}`).digest('hex');
 const safeEqual=(left,right)=>left?.length===right?.length&&crypto.timingSafeEqual(Buffer.from(left),Buffer.from(right));
+const storeId=()=>String(crypto.randomInt(100000,1000000));
+const slug=value=>String(value||'store').normalize('NFKD').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase().slice(0,30)||'store';
 
 class AuthService{
   constructor(deliver){this.deliver=deliver;}
@@ -27,14 +30,23 @@ class AuthService{
     return this.issue(user,input.device);
   }
   async registerSeller(input){
-    const {Seller}=require('../models/account.model');
     const mongoose=require('mongoose');
-    let user;
+    const content=await Content.findOne({key:'categories'}).lean(),categories=Array.isArray(content?.data)?content.data:[];
+    const category=categories.find(item=>item&&item.id===input.categoryId&&typeof item.name==='string');
+    if(!category)throw badRequest('Choose an available business category.',{fields:{categoryId:'Choose an available business category.'}});
+    let user,lastError;
     const passwordHash=await bcrypt.hash(input.password,12);
-    await mongoose.connection.transaction(async session=>{
-      [user]=await User.create([{name:input.name,email:normalize(input.email),phone:input.phone,passwordHash,accountType:'seller',roles:['seller']}],{session});
-      await Seller.create([{user:user._id,name:input.name,handle:input.handle,category:input.category,email:normalize(input.email),phone:input.phone,address:input.address,status:'draft'}],{session});
-    });
+    for(let attempt=0;attempt<10;attempt+=1){
+      const nextStoreId=storeId();
+      try{
+        await mongoose.connection.transaction(async session=>{
+          [user]=await User.create([{name:input.name,email:normalize(input.email),phone:input.phone,passwordHash,accountType:'seller',roles:['seller']}],{session});
+          await Seller.create([{user:user._id,name:input.name,storeId:nextStoreId,handle:`${slug(input.name)}-${nextStoreId}`,categoryId:category.id,category:category.name,email:normalize(input.email),phone:input.phone,address:input.address,location:{...input.location,address:input.address},status:'draft'}],{session});
+        });
+        lastError=undefined;break;
+      }catch(error){lastError=error;if(!(error?.code===11000&&(error?.keyPattern?.storeId||error?.keyPattern?.handle)))throw error;}
+    }
+    if(lastError)throw new AppError(503,'STORE_ID_UNAVAILABLE','A Store ID could not be reserved. Please try again.');
     return this.issue(user);
   }
   async login(input,accountType='personal'){

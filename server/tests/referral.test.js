@@ -20,7 +20,7 @@ test('referral is attributed once, qualifies on first paid order, releases and r
   try{
     await mongoose.connect(replica.getUri('referral_test'));
     await Promise.all([User.init(),Order.init(),Referral.init(),LedgerAccount.init(),LedgerEntry.init(),Feature.init(),BusinessRule.init()]);
-    await Feature.create({key:'rewards',enabled:true});
+    await Feature.insertMany([{key:'rewards',enabled:true},{key:'referral',enabled:true}]);
     await BusinessRule.insertMany([
       {key:'promo_usage',enabled:true,data:{maxDiscountPercent:10,minimumOrderMinor:0,expiryDays:30}},
       {key:'referral',enabled:true,data:{inviterRewardMinor:10000,inviteePromoMinor:5000,releaseAfterDays:0,requireFirstDeliveredOrder:true}},

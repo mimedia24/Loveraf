@@ -23,8 +23,11 @@ const { transitionReturn } = require("../services/after-sales.service");
 const { moderateReview } = require("../services/review.service");
 const { settleCod } = require("../services/payment.service");
 const {transitionWithdrawal}=require('../services/withdrawal.service');
-const {validateBusinessRule,rewardConfigurationReady,rewardsAvailable}=require('../services/business-rule.service');
+const {adminSellerFinance,adminSellerFinanceDetail}=require('../services/seller-finance.service');
+const {validateBusinessRule,featureReadiness}=require('../services/business-rule.service');
 class AdminController {
+  sellerFinance=async(req,res)=>res.json(await adminSellerFinance({query:req.query}));
+  sellerFinanceDetail=async(req,res)=>res.json(await adminSellerFinanceDetail({sellerId:req.params.sellerId,query:req.query}));
   systemHealth=async(_req,res)=>{
     const now=Date.now(),staleCutoff=new Date(now-24*60*60*1000),backupCutoff=new Date(now-26*60*60*1000);
     const [failedPush,failedCampaigns,paymentMismatches,stuckOrders,lastBackup]=await Promise.all([
@@ -97,7 +100,7 @@ class AdminController {
       );
     else if (req.params.resource === "sellers")
       rows = (await page(Seller.find())).map(
-        serialize.seller,
+        item=>serialize.seller(item,{includeLocation:true}),
       );
     else if (req.params.resource === "products")
       rows = (await page(Product.find())).map(
@@ -362,13 +365,15 @@ class AdminController {
       version: updated.version,
     });
   };
-  features=async(_req,res)=>res.json((await Feature.find({key:{$in:['rewards','coupons','loyalty','gift_cards','membership','affiliate']}}).sort({key:1}).lean()).map(item=>({id:item.key,key:item.key,enabled:item.enabled,status:item.enabled?'enabled':'disabled',version:item.version})));
+  features=async(_req,res)=>{
+    const rows=await Feature.find({key:{$in:['rewards','referral','coupons','loyalty','gift_cards','membership','affiliate']}}).sort({key:1}).lean();
+    res.json(await Promise.all(rows.map(async item=>{const readiness=await featureReadiness(item.key,{ignoreOwnFeature:true});return {id:item.key,key:item.key,enabled:item.enabled,ready:readiness.ready,status:item.enabled?(readiness.ready?'live':'setup_required'):(readiness.ready?'ready':'setup_required'),missingRequirements:readiness.missingRequirements,version:item.version};})));
+  };
+  marketingOverview=async(_req,res)=>res.json(await require('../services/marketing-overview.service').marketingOverview());
   updateFeature=async(req,res)=>{
-    if(!['rewards','coupons','loyalty','gift_cards','membership','affiliate'].includes(req.params.key))throw badRequest('This capability is not managed here.');
+    if(!['rewards','referral','coupons','loyalty','gift_cards','membership','affiliate'].includes(req.params.key))throw badRequest('This capability is not managed here.');
     const input=req.validated.body;
-    if(req.params.key==='rewards'&&input.enabled&&!await rewardConfigurationReady())throw badRequest('Enable and complete every reward business rule first.');
-    if(['loyalty','membership','affiliate'].includes(req.params.key)&&input.enabled){const rule=await BusinessRule.findOne({key:req.params.key,enabled:true}).lean();if(!rule)throw badRequest(`Enable and complete the ${req.params.key} business rule first.`);validateBusinessRule(req.params.key,true,rule.data);}
-    if(req.params.key==='gift_cards'&&input.enabled&&!await rewardsAvailable())throw badRequest('Enable the configured rewards wallet before gift cards.');
+    if(input.enabled){const readiness=await featureReadiness(req.params.key,{ignoreOwnFeature:true});if(!readiness.ready)throw badRequest(`Complete the required setup first: ${readiness.missingRequirements.join(', ')}.`);}
     const feature=await Feature.findOneAndUpdate({key:req.params.key,version:input.version},{$set:{enabled:input.enabled},$inc:{version:1}},{new:true});
     if(!feature)throw conflict('This capability changed. Reload first.');
     await AuditEvent.create({actor:req.auth.user._id,action:`feature.${feature.key}.update`,target:feature.key,reason:input.reason,metadata:{enabled:feature.enabled}});

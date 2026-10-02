@@ -23,11 +23,13 @@ function user(value, session) {
     ),
   };
 }
-function seller(value) {
-  return {
+function seller(value, {includeLocation=false}={}) {
+  const result = {
     id: id(value),
     name: value.name,
+    storeId: value.storeId,
     handle: value.handle,
+    categoryId: value.categoryId,
     category: value.category,
     email: value.email,
     phone: value.phone,
@@ -37,6 +39,8 @@ function seller(value) {
     version: value.version,
     createdAt: value.createdAt,
   };
+  if(includeLocation&&value.location?.latitude!==undefined)result.location={latitude:value.location.latitude,longitude:value.location.longitude,accuracy:value.location.accuracy,address:value.location.address,capturedAt:value.location.capturedAt};
+  return result;
 }
 function product(value) {
   const raw = value.toObject ? value.toObject() : value;
@@ -45,6 +49,7 @@ function product(value) {
     sellerId: id(raw.seller),
     title: raw.title,
     description: raw.description,
+    categoryId: raw.categoryId,
     category: raw.category,
     sku: raw.sku,
     price: raw.priceMinor / 100,

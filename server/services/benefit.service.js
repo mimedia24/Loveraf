@@ -4,13 +4,13 @@ const {Feature,BusinessRule,LedgerAccount,LedgerEntry,AuditEvent}=require('../mo
 const {LoyaltyEntry,GiftCard,MembershipEntitlement}=require('../models/marketing.model');
 const {User}=require('../models/account.model');
 const {AppError,badRequest,notFound,conflict}=require('../utils/errors');
-const {configuredFeatureAvailable,rewardsAvailable,validateBusinessRule}=require('./business-rule.service');
+const {featureReadiness,rewardsAvailable,validateBusinessRule}=require('./business-rule.service');
 const idempotent=require('./idempotency.service');
 
 const digest=value=>crypto.createHash('sha256').update(String(value).trim().toUpperCase()).digest('hex');
 const publicGift=value=>({id:String(value._id),name:`Gift card ••••${value.lastFour}`,lastFour:value.lastFour,amountMinor:value.amountMinor,status:value.status,expiresAt:value.expiresAt,...(value.redeemedAt?{redeemedAt:value.redeemedAt}:{}),createdAt:value.createdAt});
 async function loyaltyRule(required=false){
-  if(!await configuredFeatureAvailable('loyalty','loyalty')){if(required)throw new AppError(503,'PROVIDER_UNAVAILABLE','Loyalty points are not available yet.');return null;}
+  if(!(await featureReadiness('loyalty')).ready){if(required)throw new AppError(503,'PROVIDER_UNAVAILABLE','Loyalty points are not available yet.');return null;}
   const row=await BusinessRule.findOne({key:'loyalty',enabled:true}).lean();return validateBusinessRule('loyalty',true,row.data);
 }
 async function awardLoyalty(order,session){
@@ -74,14 +74,14 @@ async function revokeGiftCard({id,input,actor}){
   });
 }
 async function membershipSummary(owner){
-  if(!await configuredFeatureAvailable('membership','membership'))throw new AppError(503,'PROVIDER_UNAVAILABLE','Membership is not available yet.');
+  if(!(await featureReadiness('membership')).ready)throw new AppError(503,'PROVIDER_UNAVAILABLE','Membership is not available yet.');
   const ruleDocument=await BusinessRule.findOne({key:'membership',enabled:true}).lean(),rule=validateBusinessRule('membership',true,ruleDocument.data),now=new Date();
   await MembershipEntitlement.updateMany({user:owner,status:'active',endsAt:{$lte:now}},{$set:{status:'expired'}});
   const entitlement=await MembershipEntitlement.findOne({user:owner,status:'active',startsAt:{$lte:now},endsAt:{$gt:now}}).sort({endsAt:-1}).lean();
   return {rule,entitlement:entitlement?{id:String(entitlement._id),plan:entitlement.plan,status:entitlement.status,startsAt:entitlement.startsAt,endsAt:entitlement.endsAt}:null,purchaseAvailable:false};
 }
 async function grantMembership({input,actor,key}){
-  if(!await configuredFeatureAvailable('membership','membership'))throw new AppError(503,'PROVIDER_UNAVAILABLE','Membership is not available yet.');
+  if(!(await featureReadiness('membership')).ready)throw new AppError(503,'PROVIDER_UNAVAILABLE','Membership is not available yet.');
   const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(endsAt<=startsAt)throw badRequest('Membership end must be after its start.');
   return idempotent(actor,key,{operation:'membership.grant',...input},async session=>{const user=await User.findById(input.userId).session(session);if(!user||user.accountType==='seller')throw notFound('Personal account not found.');await MembershipEntitlement.updateMany({user:user._id,status:'active'},{$set:{status:'revoked',reason:'Replaced by a new entitlement.'}},{session});const [entitlement]=await MembershipEntitlement.create([{user:user._id,plan:input.plan,status:'active',startsAt,endsAt,grantedBy:actor,reason:input.reason}],{session});await AuditEvent.create([{actor,action:'membership.grant',target:String(entitlement._id),reason:input.reason,metadata:{userId:String(user._id),plan:input.plan,startsAt,endsAt}}],{session});return {id:String(entitlement._id),user:{id:String(user._id),name:user.name,email:user.email},plan:entitlement.plan,status:entitlement.status,startsAt,endsAt,version:entitlement.version};});
 }

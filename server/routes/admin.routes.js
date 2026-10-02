@@ -21,6 +21,7 @@ module.exports = function adminRoutes(requireAuth, role) {
   );
   r.get("/admin/rules", role(["finance"]), asyncHandler(c.rules));
   r.get("/admin/features",role([]),asyncHandler(c.features));
+  r.get("/admin/marketing-overview",role(["finance"]),asyncHandler(c.marketingOverview));
   r.patch("/admin/features/:key",role([]),validate(schemas.featureUpdate),asyncHandler(c.updateFeature));
   r.patch('/admin/withdrawals/:id/status',role(['finance']),validate(schemas.withdrawalStatus),asyncHandler(c.updateWithdrawal));
   r.get('/admin/coupons',role(['finance']),asyncHandler(async(req,res)=>res.json(await listAdminCoupons(req.query))));
@@ -43,6 +44,8 @@ module.exports = function adminRoutes(requireAuth, role) {
   r.post('/admin/donation-campaigns',role(['finance']),validate(schemas.donationCampaign),asyncHandler(async(req,res)=>res.status(201).json(await saveCampaign({input:req.validated.body,actor:req.auth.user._id}))));
   r.patch('/admin/donation-campaigns/:id',role(['finance']),validate(schemas.donationCampaign),asyncHandler(async(req,res)=>res.json(await saveCampaign({id:req.params.id,input:req.validated.body,actor:req.auth.user._id}))));
   r.get("/admin/finance-summary",role(["finance"]),asyncHandler(c.financeSummary));
+  r.get("/admin/seller-finance",role(["finance"]),asyncHandler(c.sellerFinance));
+  r.get("/admin/seller-finance/:sellerId",role(["finance"]),asyncHandler(c.sellerFinanceDetail));
   r.get("/admin/operations-summary",role(["operations","support"]),asyncHandler(c.operationsSummary));
   r.get('/admin/system-health',role([]),asyncHandler(c.systemHealth));
   r.patch("/admin/rules/:key", role(["finance"]),validate(schemas.businessRuleUpdate),asyncHandler(c.updateRule));

@@ -30,7 +30,7 @@ async function main(){
     const form=new FormData();form.append('image',new Blob([png],{type:'image/png'}),'qa-image.png');
     const media=await api('/media','POST',form,admin);report.records.media=media.id;
     assert.equal(new URL(media.uri).origin,'https://api.loveraf.com');assert.equal((await fetch(media.uri)).status,200);report.checks.push('Image upload and public HTTPS retrieval');
-    product=await api(`/me/sellers/${seller.id}/products`,'POST',{title:'QA Test Product - NOT FOR SALE',description:'Owner-authorized integration test, archived after testing. Not a real item for sale.',category:'Men',sku:'QA-'+run,price:100.25,stock:10,sizes:['M','L'],images:[{id:media.id}],variants:[{name:'Black',swatch:'#000000',imageIds:[media.id]}],returnDays:3,exchangeDays:3,deliveryMinDays:2,deliveryMaxDays:3,codAvailable:true},admin);report.records.product=product.id;
+    product=await api(`/me/sellers/${seller.id}/products`,'POST',{title:'QA Test Product - NOT FOR SALE',description:'Owner-authorized integration test, archived after testing. Not a real item for sale.',categoryId:'men',price:100.25,stock:10,sizes:['M','L'],images:[{id:media.id}],variants:[{name:'Black',swatch:'#000000',imageIds:[media.id]}],returnDays:3,exchangeDays:3,deliveryMinDays:2,deliveryMaxDays:3,codAvailable:true},admin);report.records.product=product.id;
     assert.equal((await api(`/products?sellerId=${seller.id}`)).items.length,0);
     await adminProxy(`admin/products/${product.id}`,'PATCH',{status:'approved',version:product.version,reason:'Owner-authorized QA product approval'});
     assert.equal((await api(`/products?sellerId=${seller.id}`)).items.length,1);report.checks.push('Seller approval, product approval and buyer catalog visibility');

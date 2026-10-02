@@ -12,7 +12,8 @@ const schemas={
   affiliate:z.object({commissionPercent:z.number().int().min(1).max(100),releaseAfterDays:z.number().int().min(0).max(365)}).strict(),
   seller_commission:z.object({platformFeePercent:z.number().int().min(0).max(100)}).strict(),
 };
-const rewardRuleKeys=['promo_usage','referral','withdrawal','membership'];
+const rewardRuleKeys=['promo_usage','withdrawal'];
+const featureRules={rewards:rewardRuleKeys,referral:['referral'],affiliate:['affiliate'],loyalty:['loyalty'],membership:['membership']};
 
 async function configuredFeatureAvailable(featureKey,ruleKey){
   if(!await Feature.exists({key:featureKey,enabled:true}))return false;
@@ -31,16 +32,26 @@ function validateBusinessRule(key,enabled,data){
 }
 
 async function rewardConfigurationReady(){
-  const rows=await BusinessRule.find({key:{$in:rewardRuleKeys}}).lean();
-  if(rows.length!==rewardRuleKeys.length)return false;
-  return rows.every(row=>{
-    if(!row.enabled)return false;
-    try{validateBusinessRule(row.key,true,row.data);return true;}catch{return false;}
-  });
+  return rulesReady(rewardRuleKeys);
+}
+
+async function rulesReady(keys){
+  const rows=await BusinessRule.find({key:{$in:keys}}).lean(),byKey=new Map(rows.map(row=>[row.key,row]));
+  return keys.every(key=>{const row=byKey.get(key);if(!row?.enabled)return false;try{validateBusinessRule(key,true,row.data);return true;}catch{return false;}});
+}
+
+async function featureReadiness(key,{ignoreOwnFeature=false}={}){
+  const own=await Feature.findOne({key}).lean(),missing=[];
+  if(!ignoreOwnFeature&&!own?.enabled)missing.push(`feature:${key}`);
+  const dependencies={referral:['rewards'],affiliate:['rewards'],loyalty:['rewards'],gift_cards:['rewards']}[key]||[];
+  for(const dependency of dependencies){if(!await Feature.exists({key:dependency,enabled:true})||!await rulesReady(featureRules[dependency]||[]))missing.push(`feature:${dependency}`);}
+  for(const ruleKey of featureRules[key]||[]){const row=await BusinessRule.findOne({key:ruleKey}).lean();let valid=Boolean(row?.enabled);if(valid){try{validateBusinessRule(ruleKey,true,row.data);}catch{valid=false;}}if(!valid)missing.push(`rule:${ruleKey}`);}
+  const ready=missing.length===0;
+  return {key,enabled:Boolean(own?.enabled),ready,status:Boolean(own?.enabled)&&ready?'live':ready?'ready':'setup_required',missingRequirements:missing,version:own?.version||0};
 }
 
 async function rewardsAvailable(){
   return Boolean(await Feature.exists({key:'rewards',enabled:true}))&&await rewardConfigurationReady();
 }
 
-module.exports={validateBusinessRule,rewardConfigurationReady,rewardsAvailable,configuredFeatureAvailable,schemas,rewardRuleKeys};
+module.exports={validateBusinessRule,rewardConfigurationReady,rewardsAvailable,configuredFeatureAvailable,featureReadiness,rulesReady,schemas,rewardRuleKeys};

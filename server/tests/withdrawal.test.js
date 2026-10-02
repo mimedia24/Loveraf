@@ -24,18 +24,20 @@ test('withdrawals reserve earnings once and require finance evidence to settle',
     const buyerToken=buyerRegistration.body.token,financeToken=financeRegistration.body.token;
     const buyerId=buyerRegistration.body.user.id,financeId=financeRegistration.body.user.id;
     const {User}=require('../models/account.model');
-    const {Feature,BusinessRule,LedgerAccount,LedgerEntry,WithdrawalRequest}=require('../models/system.model');
+    const {Feature,BusinessRule,Content,LedgerAccount,LedgerEntry,WithdrawalRequest}=require('../models/system.model');
     const {MutationKey}=require('../models/commerce.model');
     await Promise.all([LedgerAccount.syncIndexes(),LedgerEntry.syncIndexes(),WithdrawalRequest.syncIndexes(),MutationKey.syncIndexes()]);
     await User.updateOne({_id:financeId},{roles:['buyer','finance']});
+    await Content.create({key:'categories',data:[{id:'men',name:'Men',art:'hoodie',color:'#DDE7FF'}]});
     await Feature.create({key:'rewards',enabled:true});
     await BusinessRule.create([
       {key:'promo_usage',enabled:true,data:{maxDiscountPercent:10,minimumOrderMinor:10000,expiryDays:90}},
       {key:'referral',enabled:true,data:{inviterRewardMinor:10000,inviteePromoMinor:10000,releaseAfterDays:7,requireFirstDeliveredOrder:true}},
       {key:'withdrawal',enabled:true,data:{minimumMinor:50000,feeMinor:1000,allowedMethods:['bkash','bank']}},
+      {key:'seller_commission',enabled:true,data:{platformFeePercent:10}},
       {key:'membership',enabled:true,data:{monthlyMinor:23900,annualMinor:199000,trialDays:7}},
     ]);
-    const sellerRegistration=await request(runtime.app).post('/api/v1/auth/seller/register').send({name:'Payout Shop',email:'seller-payout@example.test',phone:'01811112222',password:'CorrectSellerPayoutPassword1',handle:'payout-shop',category:'Men',address:'Dhaka'});
+    const sellerRegistration=await request(runtime.app).post('/api/v1/auth/seller/register').send({name:'Payout Shop',email:'seller-payout@example.test',phone:'01811112222',password:'CorrectSellerPayoutPassword1',categoryId:'men',address:'Dhaka',location:{latitude:23.8103,longitude:90.4125,accuracy:10,address:'Dhaka',capturedAt:new Date().toISOString()}});
     assert.equal(sellerRegistration.status,201);
     const sellerToken=sellerRegistration.body.token;
     const {Seller}=require('../models/account.model');
@@ -68,6 +70,12 @@ test('withdrawals reserve earnings once and require finance evidence to settle',
     assert.equal(ownList.status,200);
     assert.equal(ownList.body.items.length,1);
     assert.equal(ownList.body.items[0].sourceKind,'earnings');
+    assert.equal((await request(runtime.app).get('/api/v1/admin/seller-finance').set(auth(buyerToken))).status,403);
+    const sellerFinanceOverview=await request(runtime.app).get('/api/v1/admin/seller-finance').set(auth(financeToken));
+    assert.equal(sellerFinanceOverview.status,200);
+    assert.ok(sellerFinanceOverview.body.items.some(item=>item.sellerId===seller.id&&item.availableMinor===90000));
+    assert.equal((await request(runtime.app).get(`/api/v1/admin/seller-finance/${seller.id}`).set(auth(financeToken))).status,200);
+    await Feature.updateOne({key:'rewards'},{$set:{enabled:false}});
     const sellerPayout=await request(runtime.app).post(`/api/v1/me/sellers/${seller.id}/withdrawals`).set(auth(sellerToken)).set('Idempotency-Key',key(10)).send(input);
     assert.equal(sellerPayout.status,201);
     assert.equal(sellerPayout.body.sourceKind,'seller_payable');
@@ -78,6 +86,7 @@ test('withdrawals reserve earnings once and require finance evidence to settle',
     assert.equal(sellerPayouts.status,200);
     assert.equal(sellerPayouts.body.items.length,1);
     assert.equal((await request(runtime.app).get(`/api/v1/me/sellers/${seller.id}/withdrawals`).set(auth(buyerToken))).status,404);
+    await Feature.updateOne({key:'rewards'},{$set:{enabled:true}});
     assert.equal((await request(runtime.app).get('/api/v1/me/withdrawals').set(auth(sellerToken))).body.items.length,0);
     assert.equal((await request(runtime.app).get('/api/v1/admin/withdrawals').set(auth(buyerToken))).status,403);
     const adminList=await request(runtime.app).get('/api/v1/admin/withdrawals?paginated=true&limit=20').set(auth(financeToken));

@@ -28,6 +28,7 @@ test("Express and MongoDB foundation", async (t) => {
   const api = request(runtime.app);
   const { User } = require("../models/account.model");
   const { Media, Product, Inventory } = require("../models/catalog.model");
+  const { Content } = require("../models/system.model");
   const call = (method, path, token, body, key) => {
     let r = api[method](path);
     if (token) r = r.set("Authorization", `Bearer ${token}`);
@@ -36,6 +37,7 @@ test("Express and MongoDB foundation", async (t) => {
     return r;
   };
   try {
+    await Content.create({key:"categories",data:[{id:"men",name:"Men",art:"hoodie",color:"#DDE7FF"}]});
     await t.test(
       "liveness, database readiness and provider capabilities",
       async () => {
@@ -223,8 +225,7 @@ test("Express and MongoDB foundation", async (t) => {
         const product = {
             title: "Smart Watch",
             description: "A verified product listing for integration tests.",
-            category: "Men",
-            sku: "WATCH-1",
+            categoryId: "men",
             price: 100.25,
             stock: 10,
             sizes: ["M", "L"],
@@ -281,7 +282,7 @@ test("Express and MongoDB foundation", async (t) => {
         assert.equal(
           await Product.countDocuments({
             seller: seller.body.id,
-            sku: product.sku,
+            sku: created.body.sku,
           }),
           1,
         );
@@ -459,8 +460,7 @@ test("Express and MongoDB foundation", async (t) => {
           title: "Smart Watch",
           description:
             "An updated verified product listing for integration tests.",
-          category: "Men",
-          sku: "WATCH-1",
+          categoryId: "men",
           price: 100.25,
           stock: 10,
           sizes: ["M", "L"],
@@ -938,9 +938,9 @@ test("Express and MongoDB foundation", async (t) => {
           email: "buyer@example.test",
           phone: "01812345678",
           password: "SeparateSellerPassword1",
-          handle: "separate-shop",
-          category: "Men",
+          categoryId: "men",
           address: "Shop 12, Dhaka Road",
+          location:{latitude:23.8103,longitude:90.4125,accuracy:12,address:"Shop 12, Dhaka Road",capturedAt:new Date().toISOString()},
         };
         const registered = await call(
           "post",
@@ -990,6 +990,8 @@ test("Express and MongoDB foundation", async (t) => {
         const stores = await call("get", "/api/v1/me/sellers", token),
           store = stores.body[0];
         assert.equal(store.status, "draft");
+        assert.match(store.storeId, /^\d{6}$/);
+        assert.equal(store.categoryId, input.categoryId);
         assert.equal(store.address, input.address);
         assert.equal(
           (

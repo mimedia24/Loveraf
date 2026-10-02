@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const mongoose=require('mongoose');
 const {MongoMemoryReplSet}=require('mongodb-memory-server');
 const {Order}=require('../models/commerce.model');
-const {AuditEvent}=require('../models/system.model');
+const {AuditEvent,BusinessRule,LedgerAccount,LedgerEntry}=require('../models/system.model');
+const {User,Seller}=require('../models/account.model');
 const {Activity}=require('../models/communication.model');
 const {settleCod}=require('../services/payment.service');
 const {transitionSellerOrder}=require('../services/order.service');
@@ -12,9 +13,10 @@ test('COD collection requires terminal delivery, exact evidence and is recorded 
   const replica=await MongoMemoryReplSet.create({replSet:{count:1}});
   try{
     await mongoose.connect(replica.getUri('payment_test'));
-    await Promise.all([Order.init(),AuditEvent.init(),Activity.init()]);
-    const user=new mongoose.Types.ObjectId(),actor=new mongoose.Types.ObjectId(),seller=new mongoose.Types.ObjectId();
-    const create=status=>Order.create({user,status,paymentMethod:'cod',totalMinor:14500,payment:{provider:'cash',status:'pending'},sellerOrders:[{seller,status}],lines:[]});
+    await Promise.all([Order.init(),AuditEvent.init(),Activity.init(),LedgerAccount.init(),LedgerEntry.init()]);
+    await BusinessRule.create({key:'seller_commission',enabled:true,data:{platformFeePercent:10}});
+    const user=new mongoose.Types.ObjectId(),actor=new mongoose.Types.ObjectId(),owner=await User.create({name:'COD Seller',email:'cod-seller@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']}),sellerDocument=await Seller.create({user:owner._id,name:'COD Seller',handle:'cod-seller',status:'approved'}),seller=sellerDocument._id;
+    const create=status=>Order.create({user,status,paymentMethod:'cod',subtotalMinor:10500,discountMinor:0,deliveryMinor:0,feeMinor:4000,totalMinor:14500,payment:{provider:'cash',status:'pending'},sellerOrders:[{seller,status,subtotalMinor:10500}],lines:[]});
     const pending=await create('shipped');
     const evidence={reference:'COD-SETTLE-001',amountMinor:14500,collectedAt:pending.createdAt.toISOString(),version:0};
     await assert.rejects(settleCod({orderId:pending.id,input:evidence,actor}),/after every seller part/);
@@ -33,7 +35,7 @@ test('COD collection requires terminal delivery, exact evidence and is recorded 
     evidence.collectedAt=another.createdAt.toISOString();
     await assert.rejects(settleCod({orderId:another.id,input:evidence,actor}),error=>error.code===11000);
     assert.equal((await Order.findById(another.id)).payment.status,'pending');
-    const sellerTwo=new mongoose.Types.ObjectId();
+    const ownerTwo=await User.create({name:'COD Seller Two',email:'cod-seller-two@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']}),sellerTwo=(await Seller.create({user:ownerTwo._id,name:'COD Seller Two',handle:'cod-seller-two',status:'approved'}))._id;
     const split=await Order.create({user,status:'confirmed',paymentMethod:'cod',subtotalMinor:20000,discountMinor:0,deliveryMinor:0,feeMinor:4000,totalMinor:24000,pricingSnapshot:{subtotalMinor:20000,discountMinor:0,deliveryMinor:0,feeMinor:4000,totalMinor:24000},payment:{provider:'cash',status:'pending'},sellerOrders:[{seller,status:'confirmed',subtotalMinor:10000},{seller:sellerTwo,status:'confirmed',subtotalMinor:10000}],lines:[]});
     await transitionSellerOrder({orderId:split.id,sellerId:seller,status:'cancelled',reason:'Seller cannot fulfil this item.',actor,version:0});
     let splitSaved=await Order.findById(split.id);

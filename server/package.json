@@ -9,6 +9,7 @@
     "build": "node scripts/validate-build.js",
     "contract:coverage": "node scripts/check-openapi-coverage.js",
     "bootstrap-admin": "node scripts/createAdmin.js",
+    "migrate:seller-store-ids": "node scripts/migrate-seller-store-ids.cjs",
     "backup": "node scripts/backup-database.cjs",
     "restore:rehearsal": "node scripts/restore-database.cjs",
     "test": "node --test tests",

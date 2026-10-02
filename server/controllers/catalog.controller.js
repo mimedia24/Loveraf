@@ -18,9 +18,27 @@ const {
 } = require("../utils/errors");
 const { providerCapabilities } = require("../config/environment");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const idempotent = require("../services/idempotency.service");
 const { createReview } = require("../services/review.service");
 const {rewardsAvailable}=require('../services/business-rule.service');
+const managedCategory = async (categoryId, session) => {
+  const content = await Content.findOne({ key: "categories" }).session(session).lean();
+  const category = Array.isArray(content?.data)
+    ? content.data.find((item) => item?.id === categoryId)
+    : null;
+  if (!category) throw badRequest("Choose an available product category.");
+  return { categoryId: category.id, category: category.name };
+};
+const generatedSku = async (seller, session) => {
+  const store = seller.storeId || String(seller._id).slice(-6).toUpperCase();
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const sku = `LRF-${store}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    const exists = await Product.exists({ seller: seller._id, sku }).session(session);
+    if (!exists) return sku;
+  }
+  throw conflict("Could not generate a unique SKU. Please retry.");
+};
 const reviewJson = (item) => ({
   id: String(item._id),
   productId: String(item.product),
@@ -130,7 +148,7 @@ class CatalogController {
           user:
             req.auth.user.accountType === "seller" ? req.auth.user._id : null,
         }).sort({ createdAt: 1 })
-      ).map(serialize.seller),
+      ).map(item=>serialize.seller(item,{includeLocation:true})),
     );
   createSeller = async () => {
     throw forbidden(
@@ -155,7 +173,7 @@ class CatalogController {
       action: "seller.submit",
       target: String(req.seller._id),
     });
-    res.json(serialize.seller(req.seller));
+    res.json(serialize.seller(req.seller,{includeLocation:true}));
   };
   sellerProducts = async (req, res) => {
     const query=req.query||{},paginated=query.paginated==='true',limit=Math.min(100,Math.max(1,Number(query.limit)||50)),offset=Math.max(0,Number(query.offset)||0);
@@ -171,6 +189,7 @@ class CatalogController {
       throw badRequest("Product version is required. Reload and retry.");
     let product;
     await Product.db.transaction(async (session) => {
+      const category = await managedCategory(input.categoryId, session);
       product = await Product.findOne({
         _id: req.params.productId,
         seller: req.seller._id,
@@ -198,6 +217,7 @@ class CatalogController {
       const {version: _version, ...details}=input;
       const update = {
         ...details,
+        ...category,
         stock: totalStock,
         stockPerCombination: input.stock,
         images: input.images.map((image) => ({
@@ -487,18 +507,8 @@ class CatalogController {
       req.get("Idempotency-Key"),
       { sellerId: String(req.seller._id), ...input },
       async (session) => {
-        // Idempotency-Key protects retries from the current client, while this
-        // business-level guard also protects older clients or rapid taps that
-        // generated a different key for the same seller/SKU.
-        const normalizedSku = input.sku.trim();
-        const duplicate = await Product.findOne({
-          seller: req.seller._id,
-          sku: normalizedSku,
-          status: { $ne: "archived" },
-        }).session(session).select("_id title status").lean();
-        if (duplicate) {
-          throw conflict(`SKU ${normalizedSku} is already used by this store.`);
-        }
+        const category = await managedCategory(input.categoryId, session);
+        const sku = await generatedSku(req.seller, session);
         const imageIds = [...new Set(input.images.map((image) => image.id))];
         const media = await Media.find({
           _id: { $in: imageIds },
@@ -513,7 +523,8 @@ class CatalogController {
             {
               seller: req.seller._id,
               ...input,
-              sku: normalizedSku,
+              ...category,
+              sku,
               stock: totalStock,
               stockPerCombination: input.stock,
               images: input.images.map((image) => ({
