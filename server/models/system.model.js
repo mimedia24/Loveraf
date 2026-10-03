@@ -18,7 +18,7 @@ const withdrawalSchema=new Schema({
   sourceKind:{type:String,enum:['earnings','seller_payable'],default:'earnings',required:true,index:true},
   seller:{type:Schema.Types.ObjectId,ref:'Seller'},
   amountMinor:{type:Number,required:true,min:1},feeMinor:{type:Number,required:true,min:0},payoutMinor:{type:Number,required:true,min:1},currency:{type:String,default:'BDT',enum:['BDT']},
-  destination:{method:{type:String,enum:['bkash','nagad','bank'],required:true},account:{type:String,required:true,maxlength:100}},
+  destination:{method:{type:String,enum:['bkash','nagad','bank'],required:true},account:{type:String,maxlength:100},accountLast4:String,profile:{type:Schema.Types.ObjectId,ref:'PayoutProfile'},profileVersion:Number,encrypted:{ciphertext:String,iv:String,tag:String}},
   status:{type:String,enum:['requested','approved','rejected','paid'],default:'requested',index:true},
   history:[withdrawalHistorySchema],
   settlement:{reference:String,paidAt:Date,actor:{type:Schema.Types.ObjectId,ref:'User'}},

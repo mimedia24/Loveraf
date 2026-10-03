@@ -15,7 +15,7 @@ test('COD settlement creates isolated rule-based seller payables once',async()=>
     const {sellerFinance,settleSellerPayables}=require('../services/seller-finance.service');
     await Promise.all([Order.init(),LedgerAccount.init(),LedgerEntry.init(),AuditEvent.init(),Activity.init()]);
     const [ownerA,ownerB]=await User.create([{name:'Seller A',email:'seller-a-finance@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']},{name:'Seller B',email:'seller-b-finance@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']}]);
-    const [sellerA,sellerB]=await Seller.create([{user:ownerA._id,name:'Seller A',handle:'seller-a-finance',status:'approved'},{user:ownerB._id,name:'Seller B',handle:'seller-b-finance',status:'approved'}]);
+    const [sellerA,sellerB]=await Seller.create([{user:ownerA._id,name:'Seller A',handle:'seller-a-finance',status:'approved',financeConfig:{commissionPercent:10}},{user:ownerB._id,name:'Seller B',handle:'seller-b-finance',status:'approved',financeConfig:{commissionPercent:20}}]);
     const skippedOrder=await Order.create({user:new mongoose.Types.ObjectId(),paymentMethod:'cod',discountMinor:0,totalMinor:10000,sellerOrders:[{seller:sellerA._id,status:'delivered',subtotalMinor:10000}],lines:[]});
     await assert.rejects(settleSellerPayables(skippedOrder,null),/Seller commission settlement is not configured/);
     assert.equal(await LedgerEntry.countDocuments(),0);
@@ -32,8 +32,10 @@ test('COD settlement creates isolated rule-based seller payables once',async()=>
     assert.equal(financeA.availableMinor,8100);
     assert.equal(financeA.pendingCodMinor,0);
     assert.equal(financeA.withdrawalRule.minimumMinor,50000);
-    assert.equal(financeB.balanceMinor,16200);
+    assert.equal(financeB.balanceMinor,14400);
     assert.equal(financeA.commission.platformFeePercent,10);
+    assert.equal(financeB.commission.platformFeePercent,20);
+    assert.equal(financeB.entries[0].metadata.platformFeePercent,20);
     assert.equal(financeA.entries[0].metadata.discountMinor,1000);
     assert.equal(financeB.entries[0].metadata.discountMinor,2000);
     assert.equal(await LedgerEntry.countDocuments({reference:{$regex:`^seller-order:${order.id}:`}}),2);

@@ -12,6 +12,7 @@ const {transitionSellerOrder}=require('../services/order.service');
 const {updateShipment}=require('../services/order.service');
 const {sellerFinance}=require('../services/seller-finance.service');
 const {createWithdrawal,listWithdrawals}=require('../services/withdrawal.service');
+const {getProfile,saveProfile}=require('../services/payout-profile.service');
 const {Activity}=require('../models/communication.model');
 const {LedgerAccount,LedgerEntry}=require('../models/system.model');
 const {attributeOrder,cancelAffiliate}=require('../services/affiliate.service');
@@ -55,6 +56,8 @@ class CommerceController{
   sellerFinance=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();const seller=await Seller.findOne({_id:req.params.id,user:req.auth.user._id,status:'approved'});if(!seller)throw notFound();res.json(await sellerFinance({seller,query:req.query}));};
   sellerWithdrawals=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();const seller=await Seller.findOne({_id:req.params.id,user:req.auth.user._id,status:'approved'});if(!seller)throw notFound();res.json(await listWithdrawals(req.auth.user._id,req.query,{sourceKind:'seller_payable',seller:seller._id}));};
   createSellerWithdrawal=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();const seller=await Seller.findOne({_id:req.params.id,user:req.auth.user._id,status:'approved'});if(!seller)throw notFound();res.status(201).json(await createWithdrawal({owner:req.auth.user._id,input:req.validated.body,key:req.get('Idempotency-Key'),sourceKind:'seller_payable',seller:seller._id}));};
+  sellerPayoutProfile=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();res.json(await getProfile({owner:req.auth.user._id,sellerId:req.params.id}));};
+  saveSellerPayoutProfile=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();res.json(await saveProfile({owner:req.auth.user._id,sellerId:req.params.id,input:req.validated.body}));};
   updateSellerOrder=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();const seller=await Seller.findOne({_id:req.params.id,user:req.auth.user._id});if(!seller)throw notFound();const {order,part}=await transitionSellerOrder({orderId:req.params.orderId,sellerId:seller._id,status:req.validated.body.status,reason:req.validated.body.reason,version:req.validated.body.version,actor:req.auth.user._id});await order.populate('user','name phone');res.json(sellerOrderJson(order,seller,part));};
   updateSellerShipment=async(req,res)=>{if(req.auth.user.accountType!=='seller')throw notFound();const seller=await Seller.findOne({_id:req.params.id,user:req.auth.user._id});if(!seller)throw notFound();const {order,part}=await updateShipment({orderId:req.params.orderId,sellerId:seller._id,shipment:req.validated.body,version:req.validated.body.version,actor:req.auth.user._id});await order.populate('user','name phone');res.json(sellerOrderJson(order,seller,part));};
   createReturn=async(req,res)=>{

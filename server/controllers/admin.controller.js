@@ -22,12 +22,15 @@ const {
 const { transitionReturn } = require("../services/after-sales.service");
 const { moderateReview } = require("../services/review.service");
 const { settleCod } = require("../services/payment.service");
-const {transitionWithdrawal}=require('../services/withdrawal.service');
-const {adminSellerFinance,adminSellerFinanceDetail}=require('../services/seller-finance.service');
+const {transitionWithdrawal,json:withdrawalJson}=require('../services/withdrawal.service');
+const {adminSellerFinance,adminSellerFinanceDetail,updateSellerFinanceConfig}=require('../services/seller-finance.service');
+const {reviewProfile}=require('../services/payout-profile.service');
 const {validateBusinessRule,featureReadiness}=require('../services/business-rule.service');
 class AdminController {
   sellerFinance=async(req,res)=>res.json(await adminSellerFinance({query:req.query}));
   sellerFinanceDetail=async(req,res)=>res.json(await adminSellerFinanceDetail({sellerId:req.params.sellerId,query:req.query}));
+  updateSellerFinanceConfig=async(req,res)=>res.json(await updateSellerFinanceConfig({sellerId:req.params.sellerId,input:req.validated.body,actor:req.auth.user._id}));
+  reviewSellerPayoutProfile=async(req,res)=>res.json(await reviewProfile({sellerId:req.params.sellerId,input:req.validated.body,actor:req.auth.user._id}));
   systemHealth=async(_req,res)=>{
     const now=Date.now(),staleCutoff=new Date(now-24*60*60*1000),backupCutoff=new Date(now-26*60*60*1000);
     const [failedPush,failedCampaigns,paymentMismatches,stuckOrders,lastBackup]=await Promise.all([
@@ -221,7 +224,7 @@ class AdminController {
         createdAt: item.createdAt,
       }));
     else if(req.params.resource==='withdrawals')
-      rows=(await page(WithdrawalRequest.find().populate('owner','name email phone').populate('seller','name handle'))).map(item=>({id:String(item._id),name:`Withdrawal ${String(item._id).slice(-8).toUpperCase()}`,status:item.status,version:item.version,sourceKind:item.sourceKind||'earnings',seller:item.seller?{id:String(item.seller._id),name:item.seller.name,handle:item.seller.handle}:null,total:item.amountMinor/100,amountMinor:item.amountMinor,feeMinor:item.feeMinor,payoutMinor:item.payoutMinor,currency:item.currency,destination:item.destination,settlement:item.settlement,history:item.history,buyer:item.owner?{name:item.owner.name,email:item.owner.email,phone:item.owner.phone}:null,createdAt:item.createdAt,updatedAt:item.updatedAt}));
+      rows=(await page(WithdrawalRequest.find().populate('owner','name email phone').populate('seller','name handle'))).map(item=>{const safe=withdrawalJson(item,{includeSensitive:true});return {id:String(item._id),name:`Withdrawal ${String(item._id).slice(-8).toUpperCase()}`,status:item.status,version:item.version,sourceKind:item.sourceKind||'earnings',seller:item.seller?{id:String(item.seller._id),name:item.seller.name,handle:item.seller.handle}:null,total:item.amountMinor/100,amountMinor:item.amountMinor,feeMinor:item.feeMinor,payoutMinor:item.payoutMinor,currency:item.currency,destination:safe.destination,settlement:item.settlement,history:item.history,buyer:item.owner?{name:item.owner.name,email:item.owner.email,phone:item.owner.phone}:null,createdAt:item.createdAt,updatedAt:item.updatedAt};});
     else if (req.params.resource === "reports")
       rows = (
         await page(Report.find()
@@ -273,6 +276,7 @@ class AdminController {
       if (!target) throw notFound();
       if (status === "approved" && target.status === "draft")
         throw badRequest("Store image must be submitted before approval.");
+      if(status==='approved'&&!Number.isInteger(target.financeConfig?.commissionPercent)){const rule=await require('../services/seller-finance.service').commissionRule({required:false});if(rule)target.financeConfig={commissionPercent:rule.platformFeePercent,configuredAt:new Date(),configuredBy:req.auth.user._id};}
       target.status = status;
       target.moderationReason = reason;
     } else if (resource === "products") {

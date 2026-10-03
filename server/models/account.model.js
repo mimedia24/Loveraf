@@ -29,12 +29,21 @@ const sellerSchema=new Schema({
   handle:{type:String,required:true,lowercase:true,unique:true},
   categoryId:{type:String,trim:true,maxlength:100},category:String,
   email:String,phone:String,address:String,
+  financeConfig:{commissionPercent:{type:Number,min:0,max:100},configuredAt:Date,configuredBy:{type:Schema.Types.ObjectId,ref:'User'}},
   location:{latitude:{type:Number,min:-90,max:90},longitude:{type:Number,min:-180,max:180},accuracy:{type:Number,min:0,max:100000},address:{type:String,maxlength:500},capturedAt:Date},
   logo:{mediaId:{type:Schema.Types.ObjectId,ref:'Media'},uri:String},status:{type:String,enum:['draft','pending','approved','rejected','suspended'],default:'pending'},moderationReason:String
 },options);
 sellerSchema.index({storeId:1},{unique:true,partialFilterExpression:{storeId:{$type:'string'}}});
 const Seller=model('Seller',sellerSchema);
+const payoutProfileSchema=new Schema({
+  seller:{type:Schema.Types.ObjectId,ref:'Seller',required:true,unique:true,index:true},owner:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},
+  method:{type:String,enum:['bkash','nagad','bank'],required:true},accountLast4:{type:String,required:true,match:/^[A-Za-z0-9]{4}$/},
+  encrypted:{ciphertext:{type:String,required:true},iv:{type:String,required:true},tag:{type:String,required:true}},
+  status:{type:String,enum:['pending','verified','rejected'],default:'pending',index:true},reviewReason:String,verifiedAt:Date,verifiedBy:{type:Schema.Types.ObjectId,ref:'User'}
+},options);
+payoutProfileSchema.set('optimisticConcurrency',true);
+const PayoutProfile=model('PayoutProfile',payoutProfileSchema);
 const paymentMethodSchema=new Schema({user:{type:Schema.Types.ObjectId,ref:'User',required:true,index:true},provider:{type:String,required:true,maxlength:50},providerCustomerRef:{type:String,required:true,maxlength:200},providerMethodRef:{type:String,required:true,maxlength:200},type:{type:String,enum:['card','mobile_wallet'],required:true},brand:{type:String,maxlength:50},lastFour:String,phoneLastFour:String,expiryMonth:{type:Number,min:1,max:12},expiryYear:{type:Number,min:2020,max:2200},isDefault:{type:Boolean,default:false}},options);
 paymentMethodSchema.path('lastFour').validate(value=>!value||/^\d{4}$/.test(value),'Invalid masked card digits.');paymentMethodSchema.path('phoneLastFour').validate(value=>!value||/^\d{4}$/.test(value),'Invalid masked phone digits.');paymentMethodSchema.index({user:1,provider:1,providerMethodRef:1},{unique:true});paymentMethodSchema.index({user:1,isDefault:-1,createdAt:-1});
 const PaymentMethod=model('PaymentMethod',paymentMethodSchema);
-module.exports={User,Session,Verification,Address,Seller,PaymentMethod};
+module.exports={User,Session,Verification,Address,Seller,PayoutProfile,PaymentMethod};

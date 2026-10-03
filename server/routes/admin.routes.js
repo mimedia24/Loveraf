@@ -46,6 +46,8 @@ module.exports = function adminRoutes(requireAuth, role) {
   r.get("/admin/finance-summary",role(["finance"]),asyncHandler(c.financeSummary));
   r.get("/admin/seller-finance",role(["finance"]),asyncHandler(c.sellerFinance));
   r.get("/admin/seller-finance/:sellerId",role(["finance"]),asyncHandler(c.sellerFinanceDetail));
+  r.patch("/admin/sellers/:sellerId/finance-config",role(["finance"]),validate(schemas.sellerFinanceConfig),asyncHandler(c.updateSellerFinanceConfig));
+  r.patch("/admin/sellers/:sellerId/payout-profile/status",role(["finance"]),validate(schemas.payoutProfileReview),asyncHandler(c.reviewSellerPayoutProfile));
   r.get("/admin/operations-summary",role(["operations","support"]),asyncHandler(c.operationsSummary));
   r.get('/admin/system-health',role([]),asyncHandler(c.systemHealth));
   r.patch("/admin/rules/:key", role(["finance"]),validate(schemas.businessRuleUpdate),asyncHandler(c.updateRule));

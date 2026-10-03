@@ -437,6 +437,10 @@ const featureUpdate=body(
   z.object({enabled:z.boolean(),version:z.number().int().min(0),reason:z.string().trim().min(3).max(500)}).strict(),
 );
 const withdrawalRequest=body(z.object({amountMinor:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),destination:z.object({method:z.enum(['bkash','nagad','bank']),account:z.string().trim().min(5).max(100)}).strict()}).strict());
+const sellerWithdrawalRequest=body(z.object({amountMinor:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),payoutProfileVersion:z.number().int().min(0).optional(),destination:z.object({method:z.enum(['bkash','nagad','bank']),account:z.string().trim().min(5).max(100)}).strict().optional()}).strict().refine(value=>value.payoutProfileVersion!==undefined||value.destination,{message:'Select a verified payout account.',path:['payoutProfileVersion']}));
+const payoutProfile=body(z.object({method:z.enum(['bkash','nagad','bank']),account:z.string().trim().min(5).max(100),accountName:z.string().trim().min(2).max(120),bankName:z.string().trim().min(2).max(120).optional(),version:z.number().int().min(0).optional()}).strict().superRefine((value,ctx)=>{if(['bkash','nagad'].includes(value.method)&&!/^01\d{9}$/.test(value.account.replace(/\s+/g,'')))ctx.addIssue({code:'custom',path:['account'],message:'Enter a valid Bangladesh mobile wallet number.'});if(value.method==='bank'&&!value.bankName)ctx.addIssue({code:'custom',path:['bankName'],message:'Enter the bank name.'});if(value.method==='bank'&&!/^[A-Za-z0-9-]{5,34}$/.test(value.account.replace(/\s+/g,'')))ctx.addIssue({code:'custom',path:['account'],message:'Enter a valid bank account number.'});}));
+const payoutProfileReview=body(z.object({status:z.enum(['verified','rejected']),version:z.number().int().min(0),reason:z.string().trim().min(3).max(500)}).strict());
+const sellerFinanceConfig=body(z.object({commissionPercent:z.number().int().min(0).max(100),version:z.number().int().min(0),reason:z.string().trim().min(3).max(500)}).strict());
 const withdrawalStatus=body(z.object({status:z.enum(['approved','rejected','paid']),version:z.number().int().min(0),reason:z.string().trim().min(3).max(500),settlement:z.object({reference:z.string().trim().min(3).max(150),paidAt:z.iso.datetime()}).strict().optional()}).strict().superRefine((value,ctx)=>{
   if(value.status==='paid'&&!value.settlement)ctx.addIssue({code:'custom',path:['settlement'],message:'Payout evidence is required.'});
   if(value.status!=='paid'&&value.settlement)ctx.addIssue({code:'custom',path:['settlement'],message:'Payout evidence is accepted only when marking paid.'});
@@ -492,6 +496,10 @@ module.exports = {
   businessRuleUpdate,
   featureUpdate,
   withdrawalRequest,
+  sellerWithdrawalRequest,
+  payoutProfile,
+  payoutProfileReview,
+  sellerFinanceConfig,
   withdrawalStatus,
   couponPayload,
   giftCardRedeem,
