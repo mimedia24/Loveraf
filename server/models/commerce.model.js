@@ -51,15 +51,16 @@ const sellerOrderSchema = new Schema(
     seller: { type: Schema.Types.ObjectId, ref: "Seller" },
     status: {
       type: String,
-      enum: ["confirmed", "packing", "shipped", "delivered", "cancelled"],
-      default: "confirmed",
+      enum: ["awaiting_confirmation", "confirmed", "packing", "shipped", "delivered", "cancelled"],
+      default: "awaiting_confirmation",
     },
     version: { type: Number, default: 0 },
     subtotalMinor: Number,
     shipment: {
       courier: String,
       tracking: String,
-      status: { type: String, default: "unbooked" },
+      status: { type: String, enum: ["unbooked", "pickup_requested", "booked", "picked_up", "in_transit", "delivered", "failed", "rto", "cancelled"], default: "unbooked" },
+      pickupRequestedAt: Date,
     },
     statusHistory: [statusEventSchema],
   },
@@ -85,6 +86,7 @@ const Order = model(
         required: true,
         index: true,
       },
+      orderNumber: { type: String, match: /^\d{8}$/, immutable: true },
       status: { type: String, default: "confirmed" },
       currency: { type: String, default: "BDT" },
       subtotalMinor: Number,
@@ -126,6 +128,12 @@ const Order = model(
     options,
   ),
 );
+Order.schema.pre('validate', function(next){
+  if(this.isNew){
+    if(!this.orderNumber)this.orderNumber=String(Math.floor(10000000+Math.random()*90000000));
+  }
+  next();
+});
 Order.schema.index(
   { "payment.reference": 1 },
   {
@@ -135,6 +143,7 @@ Order.schema.index(
 );
 Order.schema.index({user:1,createdAt:-1,_id:-1});
 Order.schema.index({"sellerOrders.seller":1,createdAt:-1,_id:-1});
+Order.schema.index({orderNumber:1},{unique:true,sparse:true});
 const mutationKeySchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },

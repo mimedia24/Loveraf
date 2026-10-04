@@ -647,7 +647,10 @@ test("Express and MongoDB foundation", async (t) => {
         assert.equal(listed.status, 200);
         assert.equal(listed.body[0].buyer.name, "Buyer Updated");
         assert.equal(listed.body[0].lines[0].qty, 2);
-        assert.equal(listed.body[0].status, "confirmed");
+        assert.equal(listed.body[0].status, "awaiting_confirmation");
+        assert.equal(listed.body[0].buyer.phone, undefined);
+        assert.equal(listed.body[0].address.mobile, undefined);
+        assert.match(listed.body[0].orderNumber, /^\d{8}$/);
         assert.equal(
           (
             await call(
@@ -669,41 +672,66 @@ test("Express and MongoDB foundation", async (t) => {
           ).status,
           400,
         );
+        const confirmed = await call(
+          "patch",
+          `/api/v1/admin/orders/${orderId}/status`,
+          sellerToken,
+          { sellerId: seller.body.id, status: "confirmed", version: 0, reason: "Order verified" },
+        );
+        assert.equal(confirmed.status, 200);
         const packing = await call(
           "patch",
           `/api/v1/me/sellers/${seller.body.id}/orders/${orderId}`,
           sellerToken,
-          { status: "packing", version: 0 },
+          { status: "packing", version: 1 },
         );
         assert.equal(packing.body.status, "packing");
-        assert.equal(packing.body.version, 1);
+        assert.equal(packing.body.version, 2);
+        const pickup = await call(
+          "post",
+          `/api/v1/me/sellers/${seller.body.id}/orders/${orderId}/pickup-request`,
+          sellerToken,
+          { version: 2 },
+        );
+        assert.equal(pickup.status, 200);
+        assert.equal(pickup.body.shipmentStatus, "pickup_requested");
+        const sellerTracking = await call(
+          "patch",
+          `/api/v1/me/sellers/${seller.body.id}/orders/${orderId}/shipment`,
+          sellerToken,
+          { status: "in_transit", courier: "Loveraf", tracking: "LRF-001", version: 3 },
+        );
+        assert.equal(sellerTracking.status, 400);
         const shipped = await call(
           "patch",
-          `/api/v1/admin/orders/${orderId}/status`,
+          `/api/v1/admin/orders/${orderId}/shipment`,
           sellerToken,
-          {
-            sellerId: seller.body.id,
-            status: "shipped",
-            version: 1,
-            reason: "Courier handover verified",
-          },
+          { sellerId: seller.body.id, status: "in_transit", courier: "Loveraf", tracking: "LRF-001", version: 3 },
         );
         assert.equal(shipped.status, 200);
-        assert.equal(shipped.body.sellerStatus, "shipped");
-        const delivered = await call(
+        assert.equal(shipped.body.shipment.status, "in_transit");
+        const sellerDelivered = await call(
           "patch",
           `/api/v1/me/sellers/${seller.body.id}/orders/${orderId}`,
           sellerToken,
-          { status: "delivered", version: 2 },
+          { status: "delivered", version: 4 },
         );
-        assert.equal(delivered.body.status, "delivered");
+        assert.equal(sellerDelivered.status, 400);
+        const delivered = await call(
+          "patch",
+          `/api/v1/admin/orders/${orderId}/status`,
+          sellerToken,
+          { sellerId: seller.body.id, status: "delivered", version: 4, reason: "Delivery completed", delivery: { reference: "COD-FOUNDATION-001", amountMinor: 24050, collectedAt: new Date().toISOString() } },
+        );
+        assert.equal(delivered.status, 200);
+        assert.equal(delivered.body.sellerStatus, "delivered");
         assert.equal(
           (
             await call(
               "patch",
               `/api/v1/me/sellers/${seller.body.id}/orders/${orderId}`,
               sellerToken,
-              { status: "delivered", version: 3 },
+              { status: "delivered", version: 5 },
             )
           ).status,
           400,

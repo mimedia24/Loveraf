@@ -6,8 +6,10 @@ const {Activity}=require('../models/communication.model');
 const {badRequest,notFound,conflict}=require('../utils/errors');
 const {releasePromo}=require('./promo.service');
 const {adjustCouponAfterCancellation}=require('./coupon.service');
+const {settleSellerPayables}=require('./seller-finance.service');
 
 const transitions={
+  awaiting_confirmation:new Set(['confirmed','cancelled']),
   confirmed:new Set(['packing','cancelled']),
   packing:new Set(['shipped','cancelled']),
   shipped:new Set(['delivered']),
@@ -22,6 +24,7 @@ function overallStatus(parts){
   if(statuses.every(status=>['delivered','cancelled'].includes(status)))return 'completed';
   if(statuses.some(status=>['shipped','delivered'].includes(status)))return 'shipped';
   if(statuses.some(status=>status==='packing'))return 'packing';
+  if(statuses.some(status=>status==='awaiting_confirmation'))return 'awaiting_confirmation';
   return 'confirmed';
 }
 
@@ -56,14 +59,21 @@ async function adjustInventory(order,sellerId,status,session){
   }
 }
 
-async function transitionSellerOrder({orderId,sellerId,status,reason,actor,version}){
+async function transitionSellerOrder({orderId,sellerId,status,reason,actor,version,isAdmin=false,enforceSeller=false,delivery}){
   return mongoose.connection.transaction(async session=>{
     const order=await Order.findById(orderId).session(session);
     if(!order)throw notFound('Order not found.');
     const part=order.sellerOrders.find(item=>String(item.seller)===String(sellerId));
     if(!part)throw notFound('Seller order not found.');
     if(version!==undefined&&part.version!==version)throw conflict('This order changed. Refresh before updating.');
+    if(status==='delivered'&&!isAdmin&&enforceSeller)throw badRequest('Only Loveraf can confirm delivery.');
+    if(status==='confirmed'&&!isAdmin&&enforceSeller)throw badRequest('Waiting for admin confirmation.');
+    if(status==='shipped'&&enforceSeller)throw badRequest('Request courier pickup instead of marking the order shipped.');
     if(!transitions[part.status]?.has(status))throw badRequest(`Order cannot move from ${part.status} to ${status}.`);
+    if(status==='delivered'&&isAdmin){
+      if(!['shipped'].includes(part.status)||part.shipment?.status==='rto')throw badRequest('Delivery can only be confirmed after courier handover.');
+      if(order.paymentMethod==='cod'&&(!delivery||!delivery.reference||!Number.isSafeInteger(delivery.amountMinor)||!delivery.collectedAt))throw badRequest('COD delivery confirmation requires collection reference, amount and date.');
+    }
     if(status==='cancelled'&&String(reason||'').trim().length<3)throw badRequest('A cancellation reason is required.');
     await adjustInventory(order,sellerId,status,session);
     if(status==='cancelled'){
@@ -72,14 +82,35 @@ async function transitionSellerOrder({orderId,sellerId,status,reason,actor,versi
       await adjustCouponAfterCancellation({order,nextDiscountMinor:adjustment.couponDiscountMinor,session});
     }
     part.status=status;part.version+=1;part.statusHistory.push({status,reason:String(reason||'').trim(),actor,at:new Date()});
-    if(status==='packing')part.shipment.status='packing';
+    if(status==='delivered'){
+      part.shipment.status='delivered';
+      if(order.paymentMethod==='cod'&&delivery){
+        if(delivery.amountMinor!==order.totalMinor)throw badRequest('Collected amount must match the order total.');
+        order.payment={...(order.payment?.toObject?.()||order.payment),status:'paid',provider:'cash',reference:delivery.reference,amountMinor:delivery.amountMinor,collectedAt:new Date(delivery.collectedAt),recordedAt:new Date(),actor,version:(order.payment?.version||0)+1};
+      }
+    }
+    if(status==='packing')part.shipment.status='unbooked';
     if(status==='shipped')part.shipment.status='in_transit';
-    if(status==='delivered')part.shipment.status='delivered';
     if(status==='cancelled')part.shipment.status='cancelled';
     order.status=overallStatus(order.sellerOrders);
+    if(status==='delivered'&&order.payment?.status==='paid')await settleSellerPayables(order,session);
     await order.save({session});
     await AuditEvent.create([{actor,action:`order.${status}`,target:String(order._id),reason:String(reason||'').trim()}],{session});
     await Activity.create([{user:order.user,category:'order',title:`Order ${status}`,body:status==='cancelled'?String(reason||'').trim():`Your order is now ${status}.`,target:{orderId:String(order._id),sellerId:String(sellerId),status}}],{session});
+    return {order,part};
+  });
+}
+
+async function requestPickup({orderId,sellerId,actor,version}){
+  return mongoose.connection.transaction(async session=>{
+    const order=await Order.findById(orderId).session(session);if(!order)throw notFound('Order not found.');
+    const part=order.sellerOrders.find(item=>String(item.seller)===String(sellerId));if(!part)throw notFound('Seller order not found.');
+    if(part.version!==version)throw conflict('This order changed. Refresh before updating.');
+    if(part.status!=='packing'||!['unbooked','failed'].includes(part.shipment?.status))throw badRequest('Prepare the order before requesting pickup.');
+    part.shipment.status='pickup_requested';part.shipment.pickupRequestedAt=new Date();part.version+=1;
+    part.statusHistory.push({status:'shipment.pickup_requested',reason:'Seller requested courier pickup.',actor,at:new Date()});
+    await order.save({session});await AuditEvent.create([{actor,action:'shipment.pickup_requested',target:String(order._id),metadata:{sellerId:String(sellerId)}}],{session});
+    await Activity.create([{user:order.user,category:'alert',title:'Pickup requested',body:'Loveraf is arranging pickup from the seller.',target:{orderId:String(order._id),sellerId:String(sellerId),status:'pickup_requested'}}],{session});
     return {order,part};
   });
 }
@@ -92,8 +123,9 @@ async function updateShipment({orderId,sellerId,shipment,actor,version}){
     if(!part)throw notFound('Seller order not found.');
     if(part.version!==version)throw conflict('This order changed. Refresh before updating.');
     if(!['packing','shipped'].includes(part.status))throw badRequest('Tracking can only be updated while an order is packing or shipped.');
+    if(part.status==='packing'&&!['pickup_requested','booked','picked_up','failed'].includes(part.shipment?.status))throw badRequest('The seller must request pickup before courier tracking can begin.');
     // Delivery must use the order transition, which also settles reserved stock.
-    if(!['booked','picked_up','in_transit','failed','rto'].includes(shipment.status))throw badRequest('Confirm delivery through the order status action.');
+    if(!['pickup_requested','booked','picked_up','in_transit','failed','rto'].includes(shipment.status))throw badRequest('Confirm delivery through the order status action.');
     if(part.status==='shipped'&&shipment.status==='booked')throw badRequest('A shipped order cannot return to booked.');
     part.shipment={courier:shipment.courier,tracking:shipment.tracking,status:shipment.status};
     if(['picked_up','in_transit'].includes(shipment.status)&&part.status==='packing'){
@@ -110,4 +142,4 @@ async function updateShipment({orderId,sellerId,shipment,actor,version}){
   });
 }
 
-module.exports={overallStatus,transitionSellerOrder,updateShipment,removeCancelledAmount};
+module.exports={overallStatus,transitionSellerOrder,requestPickup,updateShipment,removeCancelledAmount};

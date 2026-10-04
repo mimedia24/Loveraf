@@ -180,6 +180,9 @@
     "/me/sellers/{id}/orders/{orderId}": {
       "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Move an owned seller order through an allowed fulfilment transition", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/OrderId" } ], "responses": { "200": { "description": "Seller order updated" }, "409": { "$ref": "#/components/responses/Error" } } }
     },
+    "/me/sellers/{id}/orders/{orderId}/pickup-request": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Request Loveraf courier pickup for a prepared seller order", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/OrderId" } ], "responses": { "200": { "description": "Pickup request created" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
     "/me/sellers/{id}/orders/{orderId}/shipment": {
       "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Record manual courier tracking for an owned seller order", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/OrderId" } ], "responses": { "200": { "description": "Shipment updated" }, "409": { "$ref": "#/components/responses/Error" } } }
     },

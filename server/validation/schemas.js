@@ -252,13 +252,15 @@ const checkout = body(
 const orderStatus = body(
   z
     .object({
-      status: z.enum(["packing", "shipped", "delivered", "cancelled"]),
+      status: z.enum(["confirmed", "packing", "shipped", "delivered", "cancelled"]),
       reason: z.string().trim().max(500).optional(),
       version: z.number().int().min(0).optional(),
       sellerId: objectId.optional(),
+      delivery: z.object({reference:z.string().trim().min(3).max(150),amountMinor:z.number().int().nonnegative(),collectedAt:z.iso.datetime()}).strict().optional(),
     })
     .strict(),
 );
+const pickupRequest = body(z.object({sellerId:objectId.optional(),version:z.number().int().min(0)}).strict());
 const productReport = body(
   z.object({ reason: z.string().trim().min(5).max(500) }).strict(),
 );
@@ -387,6 +389,7 @@ const shipment = body(
       tracking: z.string().trim().min(2).max(150),
       status: z.enum([
         "booked",
+        "pickup_requested",
         "picked_up",
         "in_transit",
         "delivered",
@@ -490,6 +493,7 @@ module.exports = {
   returnRequest,
   returnStatus,
   shipment,
+  pickupRequest,
   codSettlement,
   contentPayload,
   adminRoles,

@@ -17,9 +17,10 @@ test('COD settlement creates isolated rule-based seller payables once',async()=>
     const [ownerA,ownerB]=await User.create([{name:'Seller A',email:'seller-a-finance@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']},{name:'Seller B',email:'seller-b-finance@example.test',passwordHash:'not-used',accountType:'seller',roles:['seller']}]);
     const [sellerA,sellerB]=await Seller.create([{user:ownerA._id,name:'Seller A',handle:'seller-a-finance',status:'approved',financeConfig:{commissionPercent:10}},{user:ownerB._id,name:'Seller B',handle:'seller-b-finance',status:'approved',financeConfig:{commissionPercent:20}}]);
     const skippedOrder=await Order.create({user:new mongoose.Types.ObjectId(),paymentMethod:'cod',discountMinor:0,totalMinor:10000,sellerOrders:[{seller:sellerA._id,status:'delivered',subtotalMinor:10000}],lines:[]});
-    await assert.rejects(settleSellerPayables(skippedOrder,null),/Seller commission settlement is not configured/);
-    assert.equal(await LedgerEntry.countDocuments(),0);
+    await settleSellerPayables(skippedOrder,null);
+    assert.equal(await LedgerEntry.countDocuments(),1);
     await Order.deleteOne({_id:skippedOrder._id});
+    await LedgerEntry.deleteMany({});
     await BusinessRule.create([{key:'seller_commission',enabled:true,data:{platformFeePercent:10}},{key:'withdrawal',enabled:true,data:{minimumMinor:50000,feeMinor:1000,allowedMethods:['bkash','bank']}}]);
     const order=await Order.create({user:new mongoose.Types.ObjectId(),status:'completed',subtotalMinor:30000,discountMinor:3000,deliveryMinor:0,feeMinor:4000,totalMinor:31000,paymentMethod:'cod',payment:{provider:'cash',status:'pending'},sellerOrders:[{seller:sellerA._id,status:'delivered',subtotalMinor:10000},{seller:sellerB._id,status:'delivered',subtotalMinor:20000},{seller:new mongoose.Types.ObjectId(),status:'cancelled',subtotalMinor:5000}],lines:[]});
     const pendingA=await sellerFinance({seller:sellerA});

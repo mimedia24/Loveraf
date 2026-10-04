@@ -8,10 +8,12 @@ const {withdrawalRule,json:withdrawalJson}=require('./withdrawal.service');
 
 async function commissionRule({required=true}={}){
   const document=await BusinessRule.findOne({key:'seller_commission',enabled:true}).lean();
-  if(!document){if(!required)return null;throw new AppError(503,'PROVIDER_UNAVAILABLE','Seller commission settlement is not configured yet.');}
+  // A missing global rule is a valid initial configuration: shops start at 0%.
+  // Admin can later publish a rule or override the rate per shop.
+  if(!document)return {platformFeePercent:0,source:'default'};
   return validateBusinessRule('seller_commission',true,document.data);
 }
-function effectiveCommission(seller,fallback){const configured=seller?.financeConfig?.commissionPercent;return {platformFeePercent:Number.isInteger(configured)?configured:fallback.platformFeePercent,source:Number.isInteger(configured)?'shop':'default'};}
+function effectiveCommission(seller,fallback={platformFeePercent:0}){const configured=seller?.financeConfig?.commissionPercent;return {platformFeePercent:Number.isInteger(configured)?configured:fallback.platformFeePercent||0,source:Number.isInteger(configured)?'shop':(fallback.source||'default')};}
 
 function allocateDiscount(order){
   const active=order.sellerOrders.filter(part=>part.status==='delivered');
@@ -31,10 +33,15 @@ function payableForPart(order,part,rule){
 }
 
 async function pendingCodForSeller(seller,rule,{limit=0}={}){
-  let query=Order.find({paymentMethod:'cod','payment.status':'pending',sellerOrders:{$elemMatch:{seller:seller._id,status:'delivered'}}}).sort({updatedAt:-1,_id:-1});if(limit)query=query.limit(limit);const rows=await query.lean();
+  // Money becomes pending as soon as the seller requests pickup
+  // (or the seller part is shipped/delivered). It becomes withdrawable only
+  // after the admin COD collection confirmation creates a ledger credit.
+  const eligibleStatuses=['shipped','delivered'];
+  const queryFilter={paymentMethod:'cod','payment.status':'pending',sellerOrders:{$elemMatch:{seller:seller._id,status:{$ne:'cancelled'},$or:[{status:{$in:eligibleStatuses}},{'shipment.status':{$in:['pickup_requested','booked','picked_up','in_transit']}}]}}};
+  let query=Order.find(queryFilter).sort({updatedAt:-1,_id:-1});if(limit)query=query.limit(limit);const rows=await query.lean();
   const items=rows.map(order=>{
     const part=order.sellerOrders.find(item=>String(item.seller)===String(seller._id)),estimate=payableForPart(order,part,rule);
-    return {id:String(order._id),status:part.status,paymentStatus:order.payment?.status||'pending',paymentVersion:order.payment?.version||0,orderTotalMinor:order.totalMinor,ready:order.sellerOrders.every(item=>['delivered','cancelled'].includes(item.status)),subtotalMinor:part.subtotalMinor,...estimate,deliveredAt:part.statusHistory?.filter(event=>event.status==='delivered').at(-1)?.at,updatedAt:order.updatedAt};
+    return {id:String(order._id),status:part.status,shipmentStatus:part.shipment?.status||'unbooked',paymentStatus:order.payment?.status||'pending',paymentVersion:order.payment?.version||0,orderTotalMinor:order.totalMinor,ready:part.status==='delivered',subtotalMinor:part.subtotalMinor,...estimate,deliveredAt:part.statusHistory?.filter(event=>event.status==='delivered').at(-1)?.at,updatedAt:order.updatedAt};
   });
   return {items,totalMinor:items.reduce((sum,item)=>sum+item.payableMinor,0),count:items.length};
 }
@@ -55,7 +62,7 @@ async function settleSellerPayables(order,session){
     const seller=await Seller.findById(part.seller).session(session);if(!seller)throw conflict('Seller settlement owner is unavailable.');const rule=effectiveCommission(seller,defaultRule);
     const grossMinor=part.subtotalMinor-discountMinor,platformFeeMinor=Math.floor(grossMinor*rule.platformFeePercent/100),payableMinor=grossMinor-platformFeeMinor;
     const account=await LedgerAccount.findOneAndUpdate({owner:seller.user,kind:'seller_payable',currency:'BDT'},{$setOnInsert:{owner:seller.user,kind:'seller_payable',currency:'BDT'}},{upsert:true,new:true,session});
-    await LedgerEntry.create([{account:account._id,amountMinor:payableMinor,reference:`seller-order:${order._id}:${seller._id}:payable`,metadata:{title:'Delivered order payable',orderId:String(order._id),sellerId:String(seller._id),grossMinor,discountMinor,platformFeeMinor,platformFeePercent:rule.platformFeePercent}}],{session});
+    await LedgerEntry.create([{account:account._id,amountMinor:payableMinor,reference:`seller-order:${order._id}:${seller._id}:payable`,metadata:{title:'Delivered order payable',orderId:String(order._id),orderNumber:order.orderNumber||String(order._id).slice(-8),sellerId:String(seller._id),grossMinor,discountMinor,platformFeeMinor,platformFeePercent:rule.platformFeePercent}}],{session});
     await Activity.create([{user:seller.user,category:'order',title:'Seller balance credited',body:`BDT ${(payableMinor/100).toFixed(2)} was added after COD collection.`,target:{orderId:String(order._id),sellerId:String(seller._id),status:'paid'}}],{session});
   }
   return true;
@@ -89,12 +96,12 @@ async function sellerFinance({seller,query={}}){
     if(error?.code==='PROVIDER_UNAVAILABLE')return null;
     throw error;
   })]);
-  const configuredPercent=seller?.financeConfig?.commissionPercent,settlementReady=Boolean(defaultRule||Number.isInteger(configuredPercent));
-  const rule=settlementReady?effectiveCommission(seller,defaultRule||{platformFeePercent:configuredPercent}):null,estimateRule=rule||{platformFeePercent:0,source:'unconfigured'},limit=Math.min(100,Math.max(1,Number(query.limit)||20)),offset=Math.max(0,Number(query.offset)||0);
+  const configuredPercent=seller?.financeConfig?.commissionPercent,settlementReady=true;
+  const rule=effectiveCommission(seller,defaultRule||{platformFeePercent:configuredPercent||0}),estimateRule=rule,limit=Math.min(100,Math.max(1,Number(query.limit)||20)),offset=Math.max(0,Number(query.offset)||0);
   const account=await LedgerAccount.findOne({owner:seller.user,kind:'seller_payable',currency:'BDT'}).lean();
   const [totals,pending,rows]=await Promise.all([financeTotals({seller,account}),pendingCodForSeller(seller,estimateRule),account?LedgerEntry.find({account:account._id}).sort({createdAt:-1,_id:-1}).skip(offset).limit(limit+1).lean():[]]);
   const {getProfile}=require('./payout-profile.service'),payoutProfile=await getProfile({owner:seller.user,sellerId:seller._id});
-  return {currency:'BDT',balanceMinor:totals.availableMinor,...totals,settlementReady,setupMessage:settlementReady?null:'Finance must configure seller commission before pending COD can be settled.',pendingCodMinor:pending.totalMinor,pendingCodCount:pending.count,pendingCodEstimate:!settlementReady,commission:rule,payoutProfile,withdrawalAvailable:Boolean(settlementReady&&payoutRule&&payoutProfile?.status==='verified'&&totals.availableMinor>0),withdrawalRule:payoutRule,entries:rows.slice(0,limit).map(item=>({id:String(item._id),amountMinor:item.amountMinor,reference:item.reference,metadata:item.metadata||{},createdAt:item.createdAt})),nextOffset:rows.length>limit?offset+limit:null};
+  return {currency:'BDT',balanceMinor:totals.availableMinor,...totals,withdrawableMinor:totals.availableMinor,settlementReady,setupMessage:null,pendingCodMinor:pending.totalMinor,pendingBalanceMinor:pending.totalMinor,pendingCodCount:pending.count,pendingCodEstimate:false,commission:rule,payoutProfile,withdrawalAvailable:Boolean(payoutRule&&payoutProfile?.status==='verified'&&totals.availableMinor>0),withdrawalRule:payoutRule,entries:rows.slice(0,limit).map(item=>({id:String(item._id),amountMinor:item.amountMinor,reference:item.reference,metadata:item.metadata||{},createdAt:item.createdAt})),nextOffset:rows.length>limit?offset+limit:null};
 }
 
 const escapeRegex=value=>String(value||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -102,11 +109,11 @@ async function sellerFinanceOverview(rule){
   const [ledgerRows,withdrawalRows,pendingOrders]=await Promise.all([
     LedgerEntry.aggregate([{$lookup:{from:'ledgeraccounts',localField:'account',foreignField:'_id',as:'accountDocument'}},{$unwind:'$accountDocument'},{$match:{'accountDocument.kind':'seller_payable'}},{$group:{_id:null,balanceMinor:{$sum:'$amountMinor'}}}]),
     WithdrawalRequest.aggregate([{$match:{sourceKind:'seller_payable'}},{$group:{_id:'$status',amountMinor:{$sum:'$amountMinor'},payoutMinor:{$sum:'$payoutMinor'}}}]),
-    rule?Order.find({paymentMethod:'cod','payment.status':'pending','sellerOrders.status':'delivered'}).select('discountMinor sellerOrders').lean():[],
+    rule?Order.find({paymentMethod:'cod','payment.status':'pending',sellerOrders:{$elemMatch:{status:{$ne:'cancelled'},$or:[{status:{$in:['shipped','delivered']}},{'shipment.status':{$in:['pickup_requested','booked','picked_up','in_transit']}}]}}}).select('discountMinor sellerOrders').lean():[],
   ]);
   const withdrawals=Object.fromEntries(withdrawalRows.map(item=>[item._id,item]));let pendingCodMinor=0;
-  if(rule){const ids=[...new Set(pendingOrders.flatMap(order=>order.sellerOrders.map(part=>String(part.seller))))],sellers=await Seller.find({_id:{$in:ids}}).lean(),byId=new Map(sellers.map(item=>[String(item._id),item]));for(const order of pendingOrders)for(const part of order.sellerOrders.filter(item=>item.status==='delivered'))pendingCodMinor+=payableForPart(order,part,effectiveCommission(byId.get(String(part.seller)),rule)).payableMinor;}
-  return {sellerPayableMinor:ledgerRows[0]?.balanceMinor||0,pendingCodMinor,reservedWithdrawalMinor:(withdrawals.requested?.amountMinor||0)+(withdrawals.approved?.amountMinor||0),paidWithdrawalMinor:withdrawals.paid?.payoutMinor||0};
+  if(rule){const ids=[...new Set(pendingOrders.flatMap(order=>order.sellerOrders.map(part=>String(part.seller))))],sellers=await Seller.find({_id:{$in:ids}}).lean(),byId=new Map(sellers.map(item=>[String(item._id),item]));for(const order of pendingOrders)for(const part of order.sellerOrders.filter(item=>item.status!=='cancelled'&&(item.status==='shipped'||item.status==='delivered'||['pickup_requested','booked','picked_up','in_transit'].includes(item.shipment?.status))))pendingCodMinor+=payableForPart(order,part,effectiveCommission(byId.get(String(part.seller)),rule)).payableMinor;}
+  return {sellerPayableMinor:ledgerRows[0]?.balanceMinor||0,pendingCodMinor,pendingBalanceMinor:pendingCodMinor,reservedWithdrawalMinor:(withdrawals.requested?.amountMinor||0)+(withdrawals.approved?.amountMinor||0),paidWithdrawalMinor:withdrawals.paid?.payoutMinor||0};
 }
 async function adminSellerFinance({query={}}={}){
   const rule=await commissionRule({required:false}),limit=Math.min(100,Math.max(1,Number(query.limit)||25)),offset=Math.max(0,Number(query.offset)||0),search=String(query.search||'').trim(),status=String(query.status||'').trim();
@@ -114,16 +121,16 @@ async function adminSellerFinance({query={}}={}){
   const [sellers,total,overview]=await Promise.all([Seller.find(filter).sort({createdAt:-1,_id:-1}).skip(offset).limit(limit).lean(),Seller.countDocuments(filter),sellerFinanceOverview(rule)]);
   const items=await Promise.all(sellers.map(async seller=>{
     const account=await LedgerAccount.findOne({owner:seller.user,kind:'seller_payable',currency:'BDT'}).lean(),totals=await financeTotals({seller,account}),commission=rule?effectiveCommission(seller,rule):null,pending=commission?await pendingCodForSeller(seller,commission):{totalMinor:0,count:0};
-    return {sellerId:String(seller._id),storeId:seller.storeId,name:seller.name,handle:seller.handle,category:seller.category,status:seller.status,currency:'BDT',commission,...totals,pendingCodMinor:pending.totalMinor,pendingCodCount:pending.count,updatedAt:seller.updatedAt};
+    return {sellerId:String(seller._id),storeId:seller.storeId,name:seller.name,handle:seller.handle,category:seller.category,status:seller.status,currency:'BDT',commission:commission||{platformFeePercent:0,source:'default'},...totals,pendingCodMinor:pending.totalMinor,pendingBalanceMinor:pending.totalMinor,pendingCodCount:pending.count,updatedAt:seller.updatedAt};
   }));
   return {currency:'BDT',ready:Boolean(rule),commission:rule,overview,items,nextOffset:offset+items.length<total?offset+items.length:null,total};
 }
 
 async function adminSellerFinanceDetail({sellerId,query={}}){
   const seller=await Seller.findById(sellerId).lean();if(!seller)throw notFound('Seller not found.');
-  const defaultRule=await commissionRule({required:false}),configuredPercent=seller?.financeConfig?.commissionPercent,settlementReady=Boolean(defaultRule||Number.isInteger(configuredPercent)),rule=settlementReady?effectiveCommission(seller,defaultRule||{platformFeePercent:configuredPercent}):null,estimateRule=rule||{platformFeePercent:0,source:'unconfigured'},account=await LedgerAccount.findOne({owner:seller.user,kind:'seller_payable',currency:'BDT'}).lean(),limit=Math.min(100,Math.max(1,Number(query.limit)||50));
+  const defaultRule=await commissionRule({required:false}),configuredPercent=seller?.financeConfig?.commissionPercent,settlementReady=true,rule=effectiveCommission(seller,defaultRule||{platformFeePercent:configuredPercent||0}),estimateRule=rule,account=await LedgerAccount.findOne({owner:seller.user,kind:'seller_payable',currency:'BDT'}).lean(),limit=Math.min(100,Math.max(1,Number(query.limit)||50));
   const [totals,pending,entries,withdrawals]=await Promise.all([financeTotals({seller,account}),pendingCodForSeller(seller,estimateRule,{limit}),account?LedgerEntry.find({account:account._id}).sort({createdAt:-1,_id:-1}).limit(limit).lean():[],WithdrawalRequest.find({seller:seller._id,sourceKind:'seller_payable'}).sort({createdAt:-1,_id:-1}).limit(limit)]);
-  const {adminProfile}=require('./payout-profile.service');return {seller:{id:String(seller._id),storeId:seller.storeId,name:seller.name,handle:seller.handle,category:seller.category,status:seller.status,version:seller.version},currency:'BDT',settlementReady,setupMessage:settlementReady?null:'Configure this shop commission before COD settlement.',commission:rule,payoutProfile:await adminProfile(seller._id),...totals,pendingCodMinor:pending.totalMinor,pendingCodCount:pending.count,pendingCodEstimate:!settlementReady,pendingOrders:pending.items,entries:entries.map(item=>({id:String(item._id),amountMinor:item.amountMinor,reference:item.reference,metadata:item.metadata||{},createdAt:item.createdAt})),withdrawals:withdrawals.map(item=>withdrawalJson(item,{includeSensitive:true}))};
+  const {adminProfile}=require('./payout-profile.service');return {seller:{id:String(seller._id),storeId:seller.storeId,name:seller.name,handle:seller.handle,category:seller.category,status:seller.status,version:seller.version},currency:'BDT',settlementReady,setupMessage:null,commission:rule,payoutProfile:await adminProfile(seller._id),...totals,pendingCodMinor:pending.totalMinor,pendingBalanceMinor:pending.totalMinor,pendingCodCount:pending.count,pendingCodEstimate:false,pendingOrders:pending.items,entries:entries.map(item=>({id:String(item._id),amountMinor:item.amountMinor,reference:item.reference,metadata:item.metadata||{},createdAt:item.createdAt})),withdrawals:withdrawals.map(item=>withdrawalJson(item,{includeSensitive:true}))};
 }
 
 async function updateSellerFinanceConfig({sellerId,input,actor}){const current=await Seller.findById(sellerId).select('financeConfig version').lean();if(!current||current.version!==input.version)throw conflict('This shop changed. Reload before updating commission.');const configuredAt=new Date();const seller=await Seller.findOneAndUpdate({_id:sellerId,version:input.version},{$set:{financeConfig:{commissionPercent:input.commissionPercent,configuredAt,configuredBy:actor}},$inc:{version:1}},{new:true});if(!seller)throw conflict('This shop changed. Reload before updating commission.');const previous=current.financeConfig?.commissionPercent;await require('../models/system.model').AuditEvent.create({actor,action:'seller.finance-config.update',target:String(seller._id),reason:input.reason,metadata:{previousCommissionPercent:previous??null,commissionPercent:input.commissionPercent}});return {sellerId:String(seller._id),commission:{platformFeePercent:input.commissionPercent,source:'shop'},version:seller.version};}

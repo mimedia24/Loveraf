@@ -119,7 +119,8 @@ class AdminController {
         )
       ).map((order) => ({
         id: String(order._id),
-        name: `Order ${String(order._id).slice(-8).toUpperCase()}`,
+        orderNumber: order.orderNumber || String(order._id).slice(-8),
+        name: `Order ${order.orderNumber || String(order._id).slice(-8)}`,
         status: order.status,
         currency: order.currency,
         total: order.totalMinor / 100,
@@ -394,6 +395,8 @@ class AdminController {
       reason,
       version,
       actor: req.auth.user._id,
+      isAdmin: true,
+      delivery: req.validated.body.delivery,
     });
     res.json({
       ok: true,

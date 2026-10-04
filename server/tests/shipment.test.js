@@ -12,7 +12,7 @@ test('manual shipment updates are atomic and delivery does not imply COD collect
     await mongoose.connect(replica.getUri('shipment_test'));
     await Promise.all([Order.init(),AuditEvent.init()]);
     const actor=new mongoose.Types.ObjectId(),seller=new mongoose.Types.ObjectId();
-    const order=await Order.create({user:actor,status:'packing',paymentMethod:'cod',payment:{status:'pending'},sellerOrders:[{seller,status:'packing',version:0}],lines:[]});
+    const order=await Order.create({user:actor,status:'packing',paymentMethod:'cod',payment:{status:'pending'},sellerOrders:[{seller,status:'packing',version:0,shipment:{status:'pickup_requested',pickupRequestedAt:new Date()}}],lines:[]});
     const input={orderId:order.id,sellerId:seller,actor,version:0,shipment:{courier:'Manual courier',tracking:'TRACK-123',status:'in_transit'}};
     const results=await Promise.allSettled([updateShipment(input),updateShipment(input)]);
     assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
