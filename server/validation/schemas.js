@@ -469,6 +469,12 @@ const paymentMethodAttach=body(z.object({providerToken:z.string().trim().min(8).
 const pushDevice=body(z.object({installationId:z.string().trim().min(8).max(200),platform:z.enum(['android','ios']),token:z.string().trim().min(16).max(4096),appBuild:z.string().trim().min(1).max(50).optional()}).strict());
 const notificationCampaign=body(z.object({title:z.string().trim().min(3).max(160),body:z.string().trim().min(3).max(1000),category:z.enum(['alert','promo']),audience:z.enum(['all','personal','seller']),targetType:z.enum(['none','product','store']).default('none'),targetId:objectId.optional(),scheduledAt:z.iso.datetime().optional(),action:z.enum(['save','schedule','send','cancel']),version:z.number().int().min(0).optional(),reason:z.string().trim().min(3).max(500)}).strict().superRefine((value,ctx)=>{if(value.targetType!=='none'&&!value.targetId)ctx.addIssue({code:'custom',path:['targetId'],message:'Choose a target record.'});if(value.targetType==='none'&&value.targetId)ctx.addIssue({code:'custom',path:['targetId'],message:'Remove the target ID when no target is selected.'});}));
 const sellerSubmission=body(z.object({logoId:objectId}).strict());
+const sellerProfile=body(z.object({
+  logoId:objectId,
+  name:z.string().trim().min(2).max(150),
+  address:z.string().trim().min(5).max(500),
+  version:z.number().int().min(0),
+}).strict());
 const cartQuantity=body(z.object({qty:z.number().int().min(1).max(999)}).strict());
 const activityRead=body(z.object({ids:z.array(objectId).max(100).optional()}).strict());
 const conversationCreate=body(z.object({kind:z.enum(['support','seller']),sellerId:objectId.optional()}).strict().superRefine((value,ctx)=>{if(value.kind==='seller'&&!value.sellerId)ctx.addIssue({code:'custom',path:['sellerId'],message:'Select a seller.'});if(value.kind==='support'&&value.sellerId)ctx.addIssue({code:'custom',path:['sellerId'],message:'Seller is not used for support chat.'});}));
@@ -518,6 +524,7 @@ module.exports = {
   pushDevice,
   notificationCampaign,
   sellerSubmission,
+  sellerProfile,
   cartQuantity,
   activityRead,
   conversationCreate,

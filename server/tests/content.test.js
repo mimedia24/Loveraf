@@ -11,9 +11,27 @@ const response=()=>{const result={statusCode:200,body:null};result.status=code=>
 test("admin-managed public content accepts only known, bounded structures", () => {
   assert.deepEqual(
     validateContent("categories", [
-      { id: "food", name: "Food", art: "grocery", color: "#FFF0DB" },
+      {
+        id: "food",
+        name: "Food",
+        art: "grocery",
+        color: "#FFF0DB",
+        image: {
+          id: "507f1f77bcf86cd799439011",
+          uri: "https://api.loveraf.com/uploads/category-food.webp",
+        },
+      },
     ])[0],
-    { id: "food", name: "Food", art: "grocery", color: "#FFF0DB" },
+    {
+      id: "food",
+      name: "Food",
+      art: "grocery",
+      color: "#FFF0DB",
+      image: {
+        id: "507f1f77bcf86cd799439011",
+        uri: "https://api.loveraf.com/uploads/category-food.webp",
+      },
+    },
   );
   assert.deepEqual(
     validateContent("faq", [
@@ -47,6 +65,17 @@ test("admin-managed public content accepts only known, bounded structures", () =
   );
   assert.throws(
     () => validateContent("categories", [{ id: "bad", name: "Bad", art: "unknown" }]),
+    /invalid structure/,
+  );
+  assert.throws(
+    () =>
+      validateContent("categories", [
+        {
+          id: "bad-image",
+          name: "Bad image",
+          image: { id: "not-an-object-id", uri: "javascript:alert(1)" },
+        },
+      ]),
     /invalid structure/,
   );
   assert.throws(

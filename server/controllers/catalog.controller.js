@@ -175,6 +175,39 @@ class CatalogController {
     });
     res.json(serialize.seller(req.seller,{includeLocation:true}));
   };
+  updateSellerProfile = async (req, res) => {
+    const input = req.validated.body;
+    const media = await Media.findOne({
+      _id: input.logoId,
+      owner: req.auth.user._id,
+    }).lean();
+    if (!media) throw badRequest("Store logo must belong to this seller account.");
+    const seller = await Seller.findOneAndUpdate(
+      {
+        _id: req.seller._id,
+        user: req.auth.user._id,
+        version: input.version,
+      },
+      {
+        $set: {
+          name: input.name,
+          address: input.address,
+          logo: { mediaId: media._id, uri: media.uri },
+        },
+        $inc: { version: 1 },
+      },
+      { new: true, runValidators: true },
+    );
+    if (!seller)
+      throw conflict("Store profile changed. Reload it before saving again.");
+    await AuditEvent.create({
+      actor: req.auth.user._id,
+      action: "seller.profile.update",
+      target: String(seller._id),
+      metadata: { logoId: String(media._id) },
+    });
+    res.json(serialize.seller(seller, { includeLocation: true }));
+  };
   sellerProducts = async (req, res) => {
     const query=req.query||{},paginated=query.paginated==='true',limit=Math.min(100,Math.max(1,Number(query.limit)||50)),offset=Math.max(0,Number(query.offset)||0);
     const rows=await Product.find({seller:req.seller._id}).sort({createdAt:-1,_id:-1}).skip(offset).limit(paginated?limit+1:100);

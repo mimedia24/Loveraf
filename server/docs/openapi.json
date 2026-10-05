@@ -99,6 +99,9 @@
     "/me/sellers/{id}/submit": {
       "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Complete store information and submit it for approval", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerSubmission" } } } }, "responses": { "200": { "description": "Store submitted" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" } } }
     },
+    "/me/sellers/{id}/profile": {
+      "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Update an owned store's public profile", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerProfileInput" } } } }, "responses": { "200": { "description": "Store profile updated" }, "400": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
     "/me/sellers/{id}/products": {
       "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "List the authenticated seller's products", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/Limit" }, { "$ref": "#/components/parameters/Offset" } ], "responses": { "200": { "description": "Seller product page" }, "403": { "$ref": "#/components/responses/Error" } } },
       "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Catalog"], "summary": "Create an idempotent product submission", "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Product submitted" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
@@ -425,6 +428,7 @@
     "responses": { "Error": { "description": "Structured API error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } },
     "schemas": {
       "SellerSubmission": { "type": "object", "required": ["logoId"], "additionalProperties": false, "properties": { "logoId": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } },
+      "SellerProfileInput": { "type": "object", "required": ["logoId", "name", "address", "version"], "additionalProperties": false, "properties": { "logoId": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" }, "name": { "type": "string", "minLength": 2, "maxLength": 150 }, "address": { "type": "string", "minLength": 5, "maxLength": 500 }, "version": { "type": "integer", "minimum": 0 } } },
       "CartQuantity": { "type": "object", "required": ["qty"], "additionalProperties": false, "properties": { "qty": { "type": "integer", "minimum": 1, "maximum": 999 } } },
       "ActivityRead": { "type": "object", "additionalProperties": false, "properties": { "ids": { "type": "array", "maxItems": 100, "items": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } } },
       "ConversationCreate": { "type": "object", "required": ["kind"], "additionalProperties": false, "properties": { "kind": { "enum": ["support", "seller"] }, "sellerId": { "type": "string", "pattern": "^[a-fA-F0-9]{24}$" } } },

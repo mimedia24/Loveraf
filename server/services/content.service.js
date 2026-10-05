@@ -38,7 +38,13 @@ function validateContent(key, data) {
               "beauty",
               "grocery",
             ].includes(item.art)) &&
-          (!item.color || /^#[0-9a-f]{6}$/i.test(item.color)),
+          (!item.color || /^#[0-9a-f]{6}$/i.test(item.color)) &&
+          (!item.image ||
+            (item.image &&
+              typeof item.image === "object" &&
+              /^[a-f\d]{24}$/i.test(item.image.id) &&
+              text(item.image.uri, 2048) &&
+              /^https?:\/\//i.test(item.image.uri))),
       );
   if (key === "home-banners")
     valid =

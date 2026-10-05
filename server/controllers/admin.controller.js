@@ -1,5 +1,5 @@
 const { User, Seller, Session } = require("../models/account.model");
-const { Product, Report, Review } = require("../models/catalog.model");
+const { Media, Product, Report, Review } = require("../models/catalog.model");
 const { Order, ReturnRequest } = require("../models/commerce.model");
 const {
   AuditEvent,
@@ -315,10 +315,36 @@ class AdminController {
     res.json({ok:true,id:String(target._id),roles:target.roles});
   };
   content = async (req, res) => {
-    const data = require("../services/content.service").validateContent(
+    let data = require("../services/content.service").validateContent(
       req.params.key,
       req.validated.body.data,
     );
+    if (req.params.key === "categories") {
+      const imageIds = data
+        .map((category) => category.image?.id)
+        .filter(Boolean);
+      if (imageIds.length) {
+        const media = await Media.find({ _id: { $in: imageIds } })
+          .select("_id uri")
+          .lean();
+        const uriById = new Map(
+          media.map((item) => [String(item._id), item.uri]),
+        );
+        if (uriById.size !== new Set(imageIds).size)
+          throw badRequest("One or more category images no longer exist.");
+        data = data.map((category) =>
+          category.image
+            ? {
+                ...category,
+                image: {
+                  id: category.image.id,
+                  uri: uriById.get(category.image.id),
+                },
+              }
+            : category,
+        );
+      }
+    }
     const existing=await Content.findOne({key:req.params.key}).lean();
     let item;
     if(!existing){
