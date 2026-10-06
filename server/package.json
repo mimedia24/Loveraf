@@ -12,6 +12,7 @@
     "migrate:seller-store-ids": "node scripts/migrate-seller-store-ids.cjs",
     "migrate:order-numbers": "node scripts/migrate-order-numbers.cjs",
     "migrate:seller-finance": "node scripts/migrate-seller-finance-config.cjs",
+    "migrate:product-variants": "node scripts/migrate-product-variants.cjs",
     "backup": "node scripts/backup-database.cjs",
     "restore:rehearsal": "node scripts/restore-database.cjs",
     "test": "node --test tests",

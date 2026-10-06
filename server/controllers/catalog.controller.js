@@ -22,13 +22,14 @@ const crypto = require("crypto");
 const idempotent = require("../services/idempotency.service");
 const { createReview } = require("../services/review.service");
 const {rewardsAvailable}=require('../services/business-rule.service');
+const {normalizeVariants,effectivePrice}=require('../services/variant.service');
 const managedCategory = async (categoryId, session) => {
   const content = await Content.findOne({ key: "categories" }).session(session).lean();
   const category = Array.isArray(content?.data)
     ? content.data.find((item) => item?.id === categoryId)
     : null;
   if (!category) throw badRequest("Choose an available product category.");
-  return { categoryId: category.id, category: category.name };
+  return { categoryId: category.id, category: category.name, categoryConfig:category };
 };
 const generatedSku = async (seller, session) => {
   const store = seller.storeId || String(seller._id).slice(-6).toUpperCase();
@@ -245,14 +246,20 @@ class CatalogController {
       if (media.length !== imageIds.length)
         throw badRequest("Images must belong to this account.");
       const map = new Map(media.map((item) => [String(item._id), item.uri]));
-      const totalStock =
-        input.stock * input.variants.length * input.sizes.length;
-      const {version: _version, ...details}=input;
+      const normalized=normalizeVariants(input,category.categoryConfig,product.sku);
+      const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
+      const {version: _version,price,oldPrice,sellerCost,tax,video,sizeChart,variants,sizes,...details}=input;
       const update = {
         ...details,
-        ...category,
+        categoryId:category.categoryId,category:category.category,
         stock: totalStock,
         stockPerCombination: input.stock,
+        brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
+        sellerCostMinor:sellerCost===undefined?undefined:Math.round(sellerCost*100),
+        taxSnapshot:tax?{...tax,categoryId:category.categoryId}:undefined,
+        sizeChart,video:video?{mediaId:video.id,uri:video.uri}:undefined,
+        variants:normalized.map(v=>({...v,priceMinor:v.priceMinor??(price!==undefined?Math.round(price*100):undefined),oldPriceMinor:v.oldPriceMinor??(oldPrice!==undefined?Math.round(oldPrice*100):undefined)})),
+        sizes:input.sizes||[],
         images: input.images.map((image) => ({
           mediaId: image.id,
           uri: map.get(image.id),
@@ -278,17 +285,7 @@ class CatalogController {
       );
       if (removed.deletedCount !== inventories.length)
         throw conflict("Inventory changed. Reload and retry.");
-      await Inventory.insertMany(
-        input.variants.flatMap((variant) =>
-          input.sizes.map((size) => ({
-            product: product._id,
-            color: variant.name,
-            size,
-            stock: input.stock,
-          })),
-        ),
-        { session },
-      );
+      await Inventory.insertMany(normalized.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,attributes:v.attributes,sku:v.sku,color:v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),{session});
       await AuditEvent.create(
         [
           {
@@ -549,17 +546,23 @@ class CatalogController {
         }).session(session);
         if (media.length !== imageIds.length)
           throw badRequest("Images must belong to this account.");
-        const map = new Map(media.map((item) => [String(item._id), item.uri])),
-          totalStock = input.stock * input.variants.length * input.sizes.length;
+        const map = new Map(media.map((item) => [String(item._id), item.uri]));
+        const normalized=normalizeVariants(input,category.categoryConfig,sku);
+        const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
+        const variants=normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round(input.price*100),oldPriceMinor:v.oldPriceMinor??(input.oldPrice?Math.round(input.oldPrice*100):undefined)}));
         const documents = await Product.create(
           [
             {
               seller: req.seller._id,
-              ...input,
-              ...category,
+              title:input.title,description:input.description,categoryId:category.categoryId,category:category.category,
+              brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
+              sellerCostMinor:input.sellerCost===undefined?undefined:Math.round(input.sellerCost*100),taxSnapshot:input.tax?{...input.tax,categoryId:category.categoryId}:undefined,
+              video:input.video?{mediaId:input.video.id,uri:input.video.uri}:undefined,sizeChart:input.sizeChart,
               sku,
               stock: totalStock,
               stockPerCombination: input.stock,
+              sizes:input.sizes||[],variants,
+              returnDays:input.returnDays,exchangeDays:input.exchangeDays,deliveryMinDays:input.deliveryMinDays,deliveryMaxDays:input.deliveryMaxDays,codAvailable:input.codAvailable,
               images: input.images.map((image) => ({
                 mediaId: image.id,
                 uri: map.get(image.id),
@@ -575,14 +578,7 @@ class CatalogController {
         );
         const product = documents[0];
         await Inventory.insertMany(
-          input.variants.flatMap((variant) =>
-            input.sizes.map((size) => ({
-              product: product._id,
-              color: variant.name,
-              size,
-              stock: input.stock,
-            })),
-          ),
+          variants.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,attributes:v.attributes,sku:v.sku,color:v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),
           { session },
         );
         await AuditEvent.create(

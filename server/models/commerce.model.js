@@ -10,14 +10,15 @@ const cartLineSchema = new Schema(
       index: true,
     },
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
-    color: { type: String, required: true },
-    size: { type: String, required: true },
+    variantId: String, variantKey:String, attributes:Schema.Types.Mixed, sku:String,
+    color: { type: String, default:'' },
+    size: { type: String, default:'' },
     qty: { type: Number, required: true, min: 1, max: 999 },
   },
   options,
 );
 cartLineSchema.index(
-  { user: 1, product: 1, color: 1, size: 1 },
+  { user: 1, product: 1, variantId: 1, color: 1, size: 1 },
   { unique: true },
 );
 const CartLine = model("CartLine", cartLineSchema);
@@ -26,6 +27,7 @@ const lineSchema = new Schema(
     seller: { type: Schema.Types.ObjectId, ref: "Seller" },
     product: { type: Schema.Types.ObjectId, ref: "Product" },
     inventory: { type: Schema.Types.ObjectId, ref: "Inventory" },
+    variantId:String,variantKey:String,attributes:Schema.Types.Mixed,sku:String,
     title: String,
     image: String,
     color: String,

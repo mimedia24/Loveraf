@@ -9,7 +9,7 @@ function serviceProtectionFeeMinor(){
 }
 
 function calculateOrderTotals(lines,discountMinor=0){
-  const subtotalMinor=lines.reduce((sum,line)=>sum+line.product.priceMinor*line.qty,0);
+  const subtotalMinor=lines.reduce((sum,line)=>sum+(line.unitMinor??line.product.priceMinor)*line.qty,0);
   if(!Number.isSafeInteger(discountMinor)||discountMinor<0||discountMinor>subtotalMinor)throw new Error('Invalid order discount.');
   const deliveryMinor=0;
   const feeMinor=lines.length?serviceProtectionFeeMinor():0;

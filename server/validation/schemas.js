@@ -120,25 +120,32 @@ const seller = body(
     .strict(),
 );
 const image = z.object({ id: objectId, uri: z.string().optional() }).strict();
-const variant = z
-  .object({
-    name: z.string().min(1).max(100),
-    swatch: z.string().regex(/^#[0-9a-f]{6}$/i),
-    imageIds: z.array(objectId).min(1).max(10),
-  })
-  .strict();
+const variant = z.object({
+  id:z.string().min(1).max(80).optional(), key:z.string().max(300).optional(),
+  name: z.string().min(1).max(100).optional(),
+  swatch: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  attributes:z.record(z.string().min(1).max(80),z.union([z.string().max(120),z.number()])).optional(),
+  imageIds: z.array(objectId).max(10).default([]), sku:z.string().trim().max(120).optional(),
+  price:z.number().nonnegative().optional(), oldPrice:z.number().nonnegative().optional(),
+  priceMinor:z.number().int().nonnegative().optional(), oldPriceMinor:z.number().int().nonnegative().optional(),
+  salePrice:z.number().nonnegative().optional(), stock:z.number().int().min(0).max(1000000).optional(), active:z.boolean().optional(),
+}).strict().refine(v=>v.name||v.attributes,{message:'Variant needs a name or attributes.'});
 const product = body(
   z
     .object({
       title: z.string().trim().min(3).max(240),
       description: z.string().trim().min(10).max(10000),
+      brand:z.string().trim().max(120).optional(), subCategoryId:z.string().trim().max(100).optional(), subCategory:z.string().trim().max(120).optional(),
+      tags:z.array(z.string().trim().min(1).max(50)).max(30).optional(), seo:z.object({slug:z.string().max(160).optional(),title:z.string().max(200).optional(),description:z.string().max(500).optional()}).strict().optional(),
+      sellerCost:z.number().nonnegative().optional(), tax:z.object({enabled:z.boolean().optional(),mode:z.enum(['percent','fixed']).optional(),ratePercent:z.number().nonnegative().max(100).optional(),fixedMinor:z.number().int().nonnegative().optional()}).strict().optional(),
+      video:image.optional(), sizeChart:z.object({title:z.string().max(120).optional(),unit:z.enum(['inch','cm']).optional(),columns:z.array(z.string().max(60)).max(12).optional(),rows:z.array(z.record(z.string(),z.union([z.string(),z.number()]))).max(100).optional(),imageId:objectId.optional(),imageUri:z.string().url().optional()}).strict().optional(),
       categoryId: z.string().trim().min(1).max(100),
       price: z.number().positive(),
       oldPrice: z.number().positive().optional(),
       stock: z.number().int().min(0).max(1000000),
-      sizes: z.array(z.string().min(1).max(50)).min(1).max(30),
+      sizes: z.array(z.string().min(1).max(50)).max(30).default([]),
       images: z.array(image).min(1).max(20),
-      variants: z.array(variant).min(1).max(30),
+      variants: z.array(variant).max(500).default([]),
       returnDays: z.number().int().min(0).max(365),
       exchangeDays: z.number().int().min(0).max(365),
       deliveryMinDays: z.number().int().min(0).max(90),
@@ -160,7 +167,7 @@ const product = body(
           path: ["deliveryMaxDays"],
           message: "Maximum delivery days cannot be lower.",
         });
-      if (
+      if (value.sizes.length &&
         new Set(value.sizes.map((item) => item.toLowerCase())).size !==
         value.sizes.length
       )
@@ -169,8 +176,8 @@ const product = body(
           path: ["sizes"],
           message: "Each size must be unique.",
         });
-      if (
-        new Set(value.variants.map((item) => item.name.toLowerCase())).size !==
+      if (value.variants.length &&
+        new Set(value.variants.map((item) => (item.name || JSON.stringify(item.attributes)).toLowerCase())).size !==
         value.variants.length
       )
         ctx.addIssue({
@@ -178,7 +185,7 @@ const product = body(
           path: ["variants"],
           message: "Each color must be unique.",
         });
-      if (value.stock * value.sizes.length * value.variants.length > 1000000)
+      if (value.stock * Math.max(1,value.sizes.length) * Math.max(1,value.variants.length) > 1000000)
         ctx.addIssue({
           code: "custom",
           path: ["stock"],
@@ -224,19 +231,21 @@ const cart = body(
     .object({
       productId: objectId,
       qty: z.number().int().min(1).max(999),
-      color: z.string().min(1).max(100),
-      size: z.string().min(1).max(100),
+      variantId: z.string().min(1).max(100).optional(),
+      color: z.string().min(1).max(100).optional(),
+      size: z.string().min(1).max(100).optional(),
     })
-    .strict(),
+    .strict().refine(v=>v.variantId||(v.color&&v.size),{message:'Select a product variant.'}),
 );
 const buyNow = z
   .object({
     productId: objectId,
     qty: z.number().int().min(1).max(999),
-    color: z.string().min(1).max(100),
-    size: z.string().min(1).max(100),
+    variantId: z.string().min(1).max(100).optional(),
+    color: z.string().min(1).max(100).optional(),
+    size: z.string().min(1).max(100).optional(),
   })
-  .strict();
+  .strict().refine(v=>v.variantId||(v.color&&v.size),{message:'Select a product variant.'});
 const checkout = body(
   z
     .object({

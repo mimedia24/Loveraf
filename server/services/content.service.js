@@ -10,6 +10,7 @@ const keys = new Set([
 ]);
 const text = (value, max = 5000) =>
   typeof value === "string" && value.trim().length > 0 && value.length <= max;
+const categoryAttributes = (value) => Array.isArray(value) && value.length <= 30 && value.every((a)=>a&&text(a.key,60)&&text(a.label,120)&&['select','text','number'].includes(a.type||'select')&&(!a.options||Array.isArray(a.options)&&a.options.length<=100&&a.options.every(v=>text(v,120)))&&(!a.required||typeof a.required==='boolean')&&(!a.useInVariants||typeof a.useInVariants==='boolean'));
 function assertKey(key) {
   if (!keys.has(key)) throw notFound("Content section not found.");
 }
@@ -44,7 +45,9 @@ function validateContent(key, data) {
               typeof item.image === "object" &&
               /^[a-f\d]{24}$/i.test(item.image.id) &&
               text(item.image.uri, 2048) &&
-              /^https?:\/\//i.test(item.image.uri))),
+              /^https?:\/\//i.test(item.image.uri))) &&
+          (!item.subcategories || Array.isArray(item.subcategories) && item.subcategories.length<=100 && item.subcategories.every(s=>s&&text(s.id,100)&&text(s.name,100))) &&
+          (!item.variantAttributes || categoryAttributes(item.variantAttributes)),
       );
   if (key === "home-banners")
     valid =
