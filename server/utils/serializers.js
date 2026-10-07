@@ -42,7 +42,7 @@ function seller(value, {includeLocation=false}={}) {
   if(includeLocation&&value.location?.latitude!==undefined)result.location={latitude:value.location.latitude,longitude:value.location.longitude,accuracy:value.location.accuracy,address:value.location.address,capturedAt:value.location.capturedAt};
   return result;
 }
-function product(value) {
+function product(value,{includePrivate=false}={}) {
   const raw = value.toObject ? value.toObject() : value;
   return {
     id: id(raw),
@@ -65,6 +65,7 @@ function product(value) {
     variants: raw.variants,
     sizeChart:raw.sizeChart, video:raw.video?{id:id(raw.video.mediaId),uri:raw.video.uri,mime:raw.video.mime}:undefined,
     tax:raw.taxSnapshot?{enabled:Boolean(raw.taxSnapshot.enabled),mode:raw.taxSnapshot.mode,ratePercent:raw.taxSnapshot.ratePercent,fixedMinor:raw.taxSnapshot.fixedMinor}:undefined,
+    ...(includePrivate&&raw.sellerCostMinor!==undefined?{sellerCost:raw.sellerCostMinor/100}:{}),
     returnDays: raw.returnDays,
     exchangeDays: raw.exchangeDays,
     deliveryMinDays: raw.deliveryMinDays,

@@ -16,7 +16,7 @@ module.exports=function catalogRoutes(authService,requireAuth,uploadMedia){
   privateRouter.get('/me/followed-sellers',asyncHandler(controller.followedSellers));privateRouter.put('/me/followed-sellers/:sellerId',asyncHandler(controller.followSeller));privateRouter.delete('/me/followed-sellers/:sellerId',asyncHandler(controller.unfollowSeller));
   privateRouter.post('/products/:productId/report',validate(schemas.productReport),asyncHandler(controller.reportProduct));
   privateRouter.post('/products/:productId/reviews',validate(schemas.productReview),asyncHandler(controller.submitReview));privateRouter.get('/me/sellers/:id/reviews',sellerOwner(),asyncHandler(controller.sellerReviews));privateRouter.put('/me/sellers/:id/reviews/:reviewId/reply',sellerOwner(),validate(schemas.sellerReviewReply),asyncHandler(controller.replyReview));
-  const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024,files:1}});privateRouter.post('/media',upload.single('image'),asyncHandler(controller.upload));
+  const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024,files:1}});privateRouter.post('/media',upload.single('image'),asyncHandler(controller.upload));
   privateRouter.post('/me/sellers/:id/submit',sellerOwner(),validate(schemas.sellerSubmission),asyncHandler(controller.completeSeller));
   privateRouter.patch('/me/sellers/:id/profile',sellerOwner(),validate(schemas.sellerProfile),asyncHandler(controller.updateSellerProfile));
   return {publicRouter,privateRouter};

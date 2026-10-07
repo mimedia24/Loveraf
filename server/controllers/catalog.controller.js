@@ -40,6 +40,7 @@ const generatedSku = async (seller, session) => {
   }
   throw conflict("Could not generate a unique SKU. Please retry.");
 };
+const assertVariantSkus=async(sellerId,variants,session,excludeProduct)=>{const skus=variants.map(v=>v.sku.toLowerCase());if(new Set(skus).size!==skus.length)throw conflict('Every variant SKU must be unique.');const query={seller:sellerId,'variants.sku':{$in:variants.map(v=>v.sku)}};if(excludeProduct)query._id={$ne:excludeProduct};if(await Product.exists(query).session(session))throw conflict('A variant SKU is already used by this store.');};
 const reviewJson = (item) => ({
   id: String(item._id),
   productId: String(item.product),
@@ -212,7 +213,7 @@ class CatalogController {
   sellerProducts = async (req, res) => {
     const query=req.query||{},paginated=query.paginated==='true',limit=Math.min(100,Math.max(1,Number(query.limit)||50)),offset=Math.max(0,Number(query.offset)||0);
     const rows=await Product.find({seller:req.seller._id}).sort({createdAt:-1,_id:-1}).skip(offset).limit(paginated?limit+1:100);
-    const items=rows.slice(0,paginated?limit:100).map(serialize.product);
+    const items=rows.slice(0,paginated?limit:100).map(item=>serialize.product(item,{includePrivate:true}));
     res.json(paginated?{items,nextOffset:rows.length>limit?offset+limit:null}:items);
   };
   updateProduct = async (req, res) => {
@@ -239,14 +240,16 @@ class CatalogController {
           "This product has active orders and cannot change variants or inventory yet.",
         );
       const imageIds = [...new Set(input.images.map((image) => image.id))],
+        assetIds=[...new Set([...imageIds,...(input.video?.id?[input.video.id]:[]),...(input.sizeChart?.imageId?[input.sizeChart.imageId]:[])])],
         media = await Media.find({
-          _id: { $in: imageIds },
+          _id: { $in: assetIds },
           owner: req.auth.user._id,
         }).session(session);
-      if (media.length !== imageIds.length)
-        throw badRequest("Images must belong to this account.");
+      if (media.length !== assetIds.length)
+        throw badRequest("Product media must belong to this account.");
       const map = new Map(media.map((item) => [String(item._id), item.uri]));
       const normalized=normalizeVariants(input,category.categoryConfig,product.sku);
+      await assertVariantSkus(req.seller._id,normalized,session,product._id);
       const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
       const {version: _version,price,oldPrice,sellerCost,tax,video,sizeChart,variants,sizes,...details}=input;
       const update = {
@@ -257,8 +260,8 @@ class CatalogController {
         brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
         sellerCostMinor:sellerCost===undefined?undefined:Math.round(sellerCost*100),
         taxSnapshot:tax?{...tax,categoryId:category.categoryId}:undefined,
-        sizeChart,video:video?{mediaId:video.id,uri:video.uri}:undefined,
-        variants:normalized.map(v=>({...v,priceMinor:v.priceMinor??(price!==undefined?Math.round(price*100):undefined),oldPriceMinor:v.oldPriceMinor??(oldPrice!==undefined?Math.round(oldPrice*100):undefined)})),
+        sizeChart:sizeChart?{...sizeChart,imageUri:sizeChart.imageId?map.get(sizeChart.imageId):undefined}:undefined,video:video?{mediaId:video.id,uri:map.get(video.id),mime:media.find(item=>String(item._id)===video.id)?.mime}:undefined,
+        variants:normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((oldPrice||price)*100),oldPriceMinor:v.oldPriceMinor??(oldPrice?Math.round(price*100):undefined)})),
         sizes:input.sizes||[],
         images: input.images.map((image) => ({
           mediaId: image.id,
@@ -540,16 +543,18 @@ class CatalogController {
         const category = await managedCategory(input.categoryId, session);
         const sku = await generatedSku(req.seller, session);
         const imageIds = [...new Set(input.images.map((image) => image.id))];
+        const assetIds=[...new Set([...imageIds,...(input.video?.id?[input.video.id]:[]),...(input.sizeChart?.imageId?[input.sizeChart.imageId]:[])])];
         const media = await Media.find({
-          _id: { $in: imageIds },
+          _id: { $in: assetIds },
           owner: req.auth.user._id,
         }).session(session);
-        if (media.length !== imageIds.length)
-          throw badRequest("Images must belong to this account.");
+        if (media.length !== assetIds.length)
+          throw badRequest("Product media must belong to this account.");
         const map = new Map(media.map((item) => [String(item._id), item.uri]));
         const normalized=normalizeVariants(input,category.categoryConfig,sku);
+        await assertVariantSkus(req.seller._id,normalized,session);
         const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
-        const variants=normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round(input.price*100),oldPriceMinor:v.oldPriceMinor??(input.oldPrice?Math.round(input.oldPrice*100):undefined)}));
+        const variants=normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((input.oldPrice||input.price)*100),oldPriceMinor:v.oldPriceMinor??(input.oldPrice?Math.round(input.price*100):undefined)}));
         const documents = await Product.create(
           [
             {
@@ -557,7 +562,7 @@ class CatalogController {
               title:input.title,description:input.description,categoryId:category.categoryId,category:category.category,
               brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
               sellerCostMinor:input.sellerCost===undefined?undefined:Math.round(input.sellerCost*100),taxSnapshot:input.tax?{...input.tax,categoryId:category.categoryId}:undefined,
-              video:input.video?{mediaId:input.video.id,uri:input.video.uri}:undefined,sizeChart:input.sizeChart,
+              video:input.video?{mediaId:input.video.id,uri:map.get(input.video.id),mime:media.find(item=>String(item._id)===input.video.id)?.mime}:undefined,sizeChart:input.sizeChart?{...input.sizeChart,imageUri:input.sizeChart.imageId?map.get(input.sizeChart.imageId):undefined}:undefined,
               sku,
               stock: totalStock,
               stockPerCombination: input.stock,
@@ -621,9 +626,12 @@ class CatalogController {
           : b.slice(0, 4).toString() === "RIFF" &&
               b.slice(8, 12).toString() === "WEBP"
             ? "image/webp"
-            : "";
-    if (!detected || req.file.size > 8 * 1024 * 1024)
-      throw badRequest("Use a valid JPG, PNG or WebP image up to 8 MB.");
+            : b.length>12&&b.slice(4,8).toString()==="ftyp"
+              ? (b.slice(8,12).toString().toLowerCase().includes('qt')?'video/quicktime':'video/mp4')
+              : "";
+    const video=detected.startsWith('video/'),limit=video?25*1024*1024:8*1024*1024;
+    if (!detected || req.file.size > limit)
+      throw badRequest("Use JPG, PNG or WebP up to 8 MB, or MP4/MOV video up to 25 MB.");
     req.file.mimetype = detected;
     const media = await this.uploadMedia(req.auth.user, req.file);
     const uri = media.uri.startsWith("/")
@@ -633,7 +641,7 @@ class CatalogController {
       media.uri = uri;
       await media.save();
     }
-    res.status(201).json({ id: String(media._id), uri });
+    res.status(201).json({ id: String(media._id), uri, mime:detected });
   };
 }
 module.exports = CatalogController;
