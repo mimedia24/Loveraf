@@ -42,8 +42,9 @@ function seller(value, {includeLocation=false}={}) {
   if(includeLocation&&value.location?.latitude!==undefined)result.location={latitude:value.location.latitude,longitude:value.location.longitude,accuracy:value.location.accuracy,address:value.location.address,capturedAt:value.location.capturedAt};
   return result;
 }
-function product(value,{includePrivate=false}={}) {
+function product(value,{includePrivate=false,inventories=[]}={}) {
   const raw = value.toObject ? value.toObject() : value;
+  const inventoryByVariant=new Map((inventories||[]).map(item=>[String(item.variantId),item]));
   return {
     id: id(raw),
     sellerId: id(raw.seller),
@@ -62,7 +63,13 @@ function product(value,{includePrivate=false}={}) {
       id: id(image.mediaId),
       uri: image.uri,
     })),
-    variants: raw.variants,
+    models:raw.models||[],
+    variants: (raw.variants||[]).map(variant=>{
+      const item=inventoryByVariant.get(String(variant.id)),plain=variant?.toObject?variant.toObject():variant;
+      const result={...plain,regularPriceMinor:plain.regularPriceMinor??plain.priceMinor,discountPriceMinor:plain.discountPriceMinor??plain.oldPriceMinor,...(item?{stock:item.stock,reserved:item.reserved||0,availableStock:Math.max(0,item.stock-(item.reserved||0))}:{})};
+      if(!includePrivate)delete result.sku;
+      return result;
+    }),
     sizeChart:raw.sizeChart, video:raw.video?{id:id(raw.video.mediaId),uri:raw.video.uri,mime:raw.video.mime}:undefined,
     tax:raw.taxSnapshot?{enabled:Boolean(raw.taxSnapshot.enabled),mode:raw.taxSnapshot.mode,ratePercent:raw.taxSnapshot.ratePercent,fixedMinor:raw.taxSnapshot.fixedMinor}:undefined,
     ...(includePrivate&&raw.sellerCostMinor!==undefined?{sellerCost:raw.sellerCostMinor/100}:{}),

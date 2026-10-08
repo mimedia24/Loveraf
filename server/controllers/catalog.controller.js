@@ -23,6 +23,13 @@ const idempotent = require("../services/idempotency.service");
 const { createReview } = require("../services/review.service");
 const {rewardsAvailable}=require('../services/business-rule.service');
 const {normalizeVariants,effectivePrice}=require('../services/variant.service');
+const serializeProductsWithInventory=async(rows,{includePrivate=false}={})=>{
+  const ids=rows.map(row=>row._id||row.id);
+  const inventory=ids.length?await Inventory.find({product:{$in:ids}}).lean():[];
+  const grouped=new Map();
+  for(const item of inventory){const key=String(item.product);grouped.set(key,[...(grouped.get(key)||[]),item]);}
+  return rows.map(row=>serialize.product(row,{includePrivate,inventories:grouped.get(String(row._id||row.id))||[]}));
+};
 const managedCategory = async (categoryId, session) => {
   const content = await Content.findOne({ key: "categories" }).session(session).lean();
   const category = Array.isArray(content?.data)
@@ -119,7 +126,7 @@ class CatalogController {
     ];
     const rows = await Product.aggregate(pipeline);
     res.json({
-      items: rows.slice(0, limit).map(serialize.product),
+      items: await serializeProductsWithInventory(rows.slice(0, limit)),
       nextOffset: rows.length > limit ? offset + limit : null,
     });
   };
@@ -133,7 +140,7 @@ class CatalogController {
       !(await Seller.exists({ _id: product.seller, status: "approved" }))
     )
       throw notFound("Product is no longer available.");
-    res.json(serialize.product(product));
+    res.json((await serializeProductsWithInventory([product]))[0]);
   };
   sellerDetail = async (req, res) => {
     const seller = await Seller.findOne({
@@ -213,7 +220,7 @@ class CatalogController {
   sellerProducts = async (req, res) => {
     const query=req.query||{},paginated=query.paginated==='true',limit=Math.min(100,Math.max(1,Number(query.limit)||50)),offset=Math.max(0,Number(query.offset)||0);
     const rows=await Product.find({seller:req.seller._id}).sort({createdAt:-1,_id:-1}).skip(offset).limit(paginated?limit+1:100);
-    const items=rows.slice(0,paginated?limit:100).map(item=>serialize.product(item,{includePrivate:true}));
+    const items=await serializeProductsWithInventory(rows.slice(0,paginated?limit:100),{includePrivate:true});
     res.json(paginated?{items,nextOffset:rows.length>limit?offset+limit:null}:items);
   };
   updateProduct = async (req, res) => {
@@ -251,17 +258,17 @@ class CatalogController {
       const normalized=normalizeVariants(input,category.categoryConfig,product.sku);
       await assertVariantSkus(req.seller._id,normalized,session,product._id);
       const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
-      const {version: _version,price,oldPrice,sellerCost,tax,video,sizeChart,variants,sizes,...details}=input;
+      const {version: _version,price,oldPrice,sellerCost,tax,video,sizeChart,variants,sizes,models,...details}=input;
       const update = {
         ...details,
         categoryId:category.categoryId,category:category.category,
         stock: totalStock,
         stockPerCombination: input.stock,
-        brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
+        brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:[...new Set((input.tags||[]).map(item=>item.trim().toLowerCase()).filter(Boolean))],seo:input.seo,
         sellerCostMinor:sellerCost===undefined?undefined:Math.round(sellerCost*100),
         taxSnapshot:tax?{...tax,categoryId:category.categoryId}:undefined,
         sizeChart:sizeChart?{...sizeChart,imageUri:sizeChart.imageId?map.get(sizeChart.imageId):undefined}:undefined,video:video?{mediaId:video.id,uri:map.get(video.id),mime:media.find(item=>String(item._id)===video.id)?.mime}:undefined,
-        variants:normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((oldPrice||price)*100),oldPriceMinor:v.oldPriceMinor??(oldPrice?Math.round(price*100):undefined)})),
+        models:models||[],variants:normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((oldPrice||price)*100),oldPriceMinor:v.oldPriceMinor??(oldPrice?Math.round(price*100):undefined),regularPriceMinor:v.regularPriceMinor??v.priceMinor??Math.round((oldPrice||price)*100),discountPriceMinor:v.discountPriceMinor??v.oldPriceMinor??(oldPrice?Math.round(price*100):undefined)})),
         sizes:input.sizes||[],
         images: input.images.map((image) => ({
           mediaId: image.id,
@@ -288,7 +295,7 @@ class CatalogController {
       );
       if (removed.deletedCount !== inventories.length)
         throw conflict("Inventory changed. Reload and retry.");
-      await Inventory.insertMany(normalized.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,attributes:v.attributes,sku:v.sku,color:v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),{session});
+      await Inventory.insertMany(normalized.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,modelId:v.modelId,attributes:v.attributes,sku:v.sku,color:v.modelId||v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),{session});
       await AuditEvent.create(
         [
           {
@@ -300,7 +307,7 @@ class CatalogController {
         { session },
       );
     });
-    res.json(serialize.product(product));
+    res.json((await serializeProductsWithInventory([product],{includePrivate:true}))[0]);
   };
   archiveProduct = async (req, res) => {
     let product;
@@ -554,19 +561,19 @@ class CatalogController {
         const normalized=normalizeVariants(input,category.categoryConfig,sku);
         await assertVariantSkus(req.seller._id,normalized,session);
         const totalStock=normalized.reduce((sum,v)=>sum+(v.stock??input.stock),0);
-        const variants=normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((input.oldPrice||input.price)*100),oldPriceMinor:v.oldPriceMinor??(input.oldPrice?Math.round(input.price*100):undefined)}));
+        const variants=normalized.map(v=>({...v,priceMinor:v.priceMinor??Math.round((input.oldPrice||input.price)*100),oldPriceMinor:v.oldPriceMinor??(input.oldPrice?Math.round(input.price*100):undefined),regularPriceMinor:v.regularPriceMinor??v.priceMinor??Math.round((input.oldPrice||input.price)*100),discountPriceMinor:v.discountPriceMinor??v.oldPriceMinor??(input.oldPrice?Math.round(input.price*100):undefined)}));
         const documents = await Product.create(
           [
             {
               seller: req.seller._id,
               title:input.title,description:input.description,categoryId:category.categoryId,category:category.category,
-              brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:input.tags,seo:input.seo,
+              brand:input.brand,subCategoryId:input.subCategoryId,subCategory:input.subCategory,tags:[...new Set((input.tags||[]).map(item=>item.trim().toLowerCase()).filter(Boolean))],seo:input.seo,
               sellerCostMinor:input.sellerCost===undefined?undefined:Math.round(input.sellerCost*100),taxSnapshot:input.tax?{...input.tax,categoryId:category.categoryId}:undefined,
               video:input.video?{mediaId:input.video.id,uri:map.get(input.video.id),mime:media.find(item=>String(item._id)===input.video.id)?.mime}:undefined,sizeChart:input.sizeChart?{...input.sizeChart,imageUri:input.sizeChart.imageId?map.get(input.sizeChart.imageId):undefined}:undefined,
               sku,
               stock: totalStock,
               stockPerCombination: input.stock,
-              sizes:input.sizes||[],variants,
+              sizes:input.sizes||[],models:input.models||[],variants,
               returnDays:input.returnDays,exchangeDays:input.exchangeDays,deliveryMinDays:input.deliveryMinDays,deliveryMaxDays:input.deliveryMaxDays,codAvailable:input.codAvailable,
               images: input.images.map((image) => ({
                 mediaId: image.id,
@@ -583,7 +590,7 @@ class CatalogController {
         );
         const product = documents[0];
         await Inventory.insertMany(
-          variants.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,attributes:v.attributes,sku:v.sku,color:v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),
+          variants.map(v=>({product:product._id,variantId:v.id,variantKey:v.key,modelId:v.modelId,attributes:v.attributes,sku:v.sku,color:v.modelId||v.attributes.color||v.name||'',size:v.attributes.size||'Default',stock:v.stock??input.stock})),
           { session },
         );
         await AuditEvent.create(
@@ -596,7 +603,7 @@ class CatalogController {
           ],
           { session },
         );
-        return serialize.product(product);
+        return (await serializeProductsWithInventory([product],{includePrivate:true}))[0];
       },
       { required: false },
     );

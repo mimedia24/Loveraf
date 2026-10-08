@@ -31,20 +31,23 @@ function normalizeVariants(input, category, parentSku){
   if(!rows.length) rows=[{attributes:{default:'Default'}}];
   const seen=new Set(),skus=new Set();
   return rows.map((row,index)=>{
-    const attributes=row.attributes||{}; const key=keyFor(attributes);
+    const attributes=row.attributes||{};
+    const modelId=clean(row.modelId||attributes.modelId);
+    if(modelId) delete attributes.modelId;
+    const key=modelId?`model=${modelId.toLowerCase()}|${keyFor(attributes)}`:keyFor(attributes);
     for(const preset of attrs){ if(preset.required && !clean(attributes[preset.key])) throw badRequest(`Variant attribute ${preset.label||preset.key} is required.`); if(attributes[preset.key]!==undefined&&Array.isArray(preset.options)&&preset.options.length&&!preset.options.includes(String(attributes[preset.key]))) throw badRequest(`Choose a valid ${preset.label||preset.key}.`); }
     if(seen.has(key)) throw badRequest('Duplicate variant combination.'); seen.add(key);
     const sku=clean(row.sku)||`${parentSku}-${Object.values(attributes).map(slug).join('-')||index+1}`;
     if(skus.has(sku.toLowerCase())) throw conflict('Variant SKU must be unique within this store.'); skus.add(sku.toLowerCase());
-    const regular=row.priceMinor!==undefined?Number(row.priceMinor):row.price!==undefined?Math.round(Number(row.price)*100):undefined;
-    const sale=row.oldPriceMinor!==undefined?Number(row.oldPriceMinor):row.salePrice!==undefined?Math.round(Number(row.salePrice)*100):undefined;
+    const regular=row.regularPriceMinor!==undefined?Number(row.regularPriceMinor):row.priceMinor!==undefined?Number(row.priceMinor):row.price!==undefined?Math.round(Number(row.price)*100):undefined;
+    const sale=row.discountPriceMinor!==undefined?Number(row.discountPriceMinor):row.oldPriceMinor!==undefined?Number(row.oldPriceMinor):row.salePrice!==undefined?Math.round(Number(row.salePrice)*100):undefined;
     if(regular!==undefined&&(!Number.isSafeInteger(regular)||regular<0)) throw badRequest('Invalid variant price.');
-    if(sale!==undefined&&regular!==undefined&&sale>regular) throw badRequest('Sale price must be lower than regular price.');
-    return {id:clean(row.id)||variantId(),key,attributes,name:row.name||attributes.color||attributes.default,swatch:row.swatch,imageIds:Array.isArray(row.imageIds)?row.imageIds:[],sku,priceMinor:regular,oldPriceMinor:sale,active:row.active!==false,stock:Number.isInteger(row.stock)?row.stock:undefined};
+    if(sale!==undefined&&regular!==undefined&&sale>=regular) throw badRequest('Discount price must be lower than regular price.');
+    return {id:clean(row.id)||variantId(),key,modelId: modelId||undefined,attributes,name:row.name||attributes.color||attributes.default,swatch:row.swatch,imageIds:Array.isArray(row.imageIds)?row.imageIds:[],sku,priceMinor:regular,oldPriceMinor:sale,regularPriceMinor:regular,discountPriceMinor:sale,active:row.active!==false,stock:Number.isInteger(row.stock)?row.stock:undefined};
   });
 }
 function effectivePrice(product,variant){
-  const regular=variant?.priceMinor??product.priceMinor; const sale=variant?.oldPriceMinor??product.oldPriceMinor;
+  const regular=variant?.regularPriceMinor??variant?.priceMinor??product.priceMinor; const sale=variant?.discountPriceMinor??variant?.oldPriceMinor??product.oldPriceMinor;
   return {unitMinor:sale&&sale<regular?sale:regular,regularMinor:regular,saleMinor:sale&&sale<regular?sale:undefined};
 }
 module.exports={keyFor,normalizeVariants,effectivePrice,categoryAttributes};

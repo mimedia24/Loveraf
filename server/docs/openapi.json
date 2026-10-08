@@ -154,6 +154,9 @@
       "get": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Read the persisted cart", "responses": { "200": { "description": "Cart with current sellability" } } },
       "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Add or merge a selected product variant", "responses": { "201": { "description": "Cart line saved" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
     },
+    "/me/cart/batch": {
+      "post": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Atomically add multiple selected product variants", "parameters": [ { "$ref": "#/components/parameters/IdempotencyKey" } ], "responses": { "201": { "description": "Cart variants saved" }, "400": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
     "/me/cart/{id}": {
       "patch": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Set an owned cart-line quantity", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartQuantity" } } } }, "responses": { "200": { "description": "Cart line updated" }, "400": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } } },
       "delete": { "security": [ { "bearerAuth": [] } ], "tags": ["Commerce"], "summary": "Remove an owned cart line", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "Cart line removed" }, "404": { "$ref": "#/components/responses/Error" } } }

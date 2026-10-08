@@ -122,12 +122,13 @@ const seller = body(
 const image = z.object({ id: objectId, uri: z.string().optional() }).strict();
 const variant = z.object({
   id:z.string().min(1).max(80).optional(), key:z.string().max(300).optional(),
+  modelId:z.string().min(1).max(80).optional(),
   name: z.string().min(1).max(100).optional(),
   swatch: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   attributes:z.record(z.string().min(1).max(80),z.union([z.string().max(120),z.number()])).optional(),
   imageIds: z.array(objectId).max(10).default([]), sku:z.string().trim().max(120).optional(),
   price:z.number().nonnegative().optional(), oldPrice:z.number().nonnegative().optional(),
-  priceMinor:z.number().int().nonnegative().optional(), oldPriceMinor:z.number().int().nonnegative().optional(),
+  priceMinor:z.number().int().nonnegative().optional(), oldPriceMinor:z.number().int().nonnegative().optional(), regularPriceMinor:z.number().int().nonnegative().optional(), discountPriceMinor:z.number().int().nonnegative().optional(),
   salePrice:z.number().nonnegative().optional(), stock:z.number().int().min(0).max(1000000).optional(), active:z.boolean().optional(),
 }).strict().refine(v=>v.name||v.attributes,{message:'Variant needs a name or attributes.'});
 const product = body(
@@ -145,6 +146,7 @@ const product = body(
       stock: z.number().int().min(0).max(1000000),
       sizes: z.array(z.string().min(1).max(50)).max(30).default([]),
       images: z.array(image).min(1).max(20),
+      models:z.array(z.object({id:z.string().min(1).max(80),imageId:objectId,name:z.string().trim().min(1).max(100),sortOrder:z.number().int().min(0).max(1000)}).strict()).max(20).optional(),
       variants: z.array(variant).max(500).default([]),
       returnDays: z.number().int().min(0).max(365),
       exchangeDays: z.number().int().min(0).max(365),
@@ -177,15 +179,15 @@ const product = body(
           message: "Each size must be unique.",
         });
       if (value.variants.length &&
-        new Set(value.variants.map((item) => (item.name || JSON.stringify(item.attributes)).toLowerCase())).size !==
+        new Set(value.variants.map((item) => `${item.modelId||''}|${JSON.stringify(item.attributes||{})}`.toLowerCase())).size !==
         value.variants.length
       )
         ctx.addIssue({
           code: "custom",
           path: ["variants"],
-          message: "Each color must be unique.",
+          message: "Each product option must be unique.",
         });
-      if (value.stock * Math.max(1,value.sizes.length) * Math.max(1,value.variants.length) > 1000000)
+      if (value.stock > 1000000)
         ctx.addIssue({
           code: "custom",
           path: ["stock"],
@@ -193,6 +195,18 @@ const product = body(
             "Total stock across all size and color combinations is too large.",
         });
       const ids = new Set(value.images.map((item) => item.id));
+      if(value.models){
+        const modelIds=new Set(value.models.map(item=>item.id));
+        if(modelIds.size!==value.models.length)ctx.addIssue({code:'custom',path:['models'],message:'Each image model must be unique.'});
+        if(value.models.some(item=>!ids.has(item.imageId)))ctx.addIssue({code:'custom',path:['models'],message:'Each model image must belong to the uploaded gallery.'});
+        if(value.variants.some(item=>item.modelId&&!modelIds.has(item.modelId)))ctx.addIssue({code:'custom',path:['variants'],message:'Every size row must belong to a valid image model.'});
+        for(const model of value.models){
+          const rows=value.variants.filter(item=>item.modelId===model.id);
+          if(!rows.length)ctx.addIssue({code:'custom',path:['models'],message:`${model.name} needs at least one size row.`});
+          const sizes=rows.map(item=>String(item.attributes?.size||'').trim().toLowerCase());
+          if(sizes.some(size=>!size)||new Set(sizes).size!==sizes.length)ctx.addIssue({code:'custom',path:['variants'],message:`Every size in ${model.name} must be filled and unique.`});
+        }
+      }
       if (
         value.variants.some((item) => item.imageIds.some((id) => !ids.has(id)))
       )
@@ -237,6 +251,7 @@ const cart = body(
     })
     .strict().refine(v=>v.variantId||(v.color&&v.size),{message:'Select a product variant.'}),
 );
+const cartBatch = body(z.object({items:z.array(z.object({productId:objectId,variantId:z.string().min(1).max(100),qty:z.number().int().min(1).max(999)}).strict()).min(1).max(100)}).strict());
 const buyNow = z
   .object({
     productId: objectId,
@@ -246,6 +261,7 @@ const buyNow = z
     size: z.string().min(1).max(100).optional(),
   })
   .strict().refine(v=>v.variantId||(v.color&&v.size),{message:'Select a product variant.'});
+const buyNowItems=z.object({items:z.array(z.object({productId:objectId,variantId:z.string().min(1).max(100),qty:z.number().int().min(1).max(999)}).strict()).min(1).max(100)}).strict();
 const checkout = body(
   z
     .object({
@@ -254,7 +270,7 @@ const checkout = body(
       promo: z.boolean().default(false),
       couponCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{3,30}$/).optional(),
       affiliateCode:z.string().trim().toUpperCase().regex(/^AF[A-F0-9]{12}$/).optional(),
-      buyNow: buyNow.optional(),
+      buyNow: z.union([buyNow,buyNowItems]).optional(),
     })
     .strict(),
 );
@@ -499,6 +515,7 @@ module.exports = {
   address,
   profileUpdate,
   cart,
+  cartBatch,
   checkout,
   orderStatus,
   productReport,

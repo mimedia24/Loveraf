@@ -1,5 +1,5 @@
 const { User, Seller, Session } = require("../models/account.model");
-const { Media, Product, Report, Review } = require("../models/catalog.model");
+const { Media, Product, Inventory, Report, Review } = require("../models/catalog.model");
 const { Order, ReturnRequest } = require("../models/commerce.model");
 const {
   AuditEvent,
@@ -105,13 +105,11 @@ class AdminController {
       rows = (await page(Seller.find())).map(
         item=>serialize.seller(item,{includeLocation:true}),
       );
-    else if (req.params.resource === "products")
-      rows = (await page(Product.find())).map(
-        (item) => ({
-          ...serialize.product(item),
-          data: { title: item.title, images: item.images },
-        }),
-      );
+    else if (req.params.resource === "products") {
+      const products=await page(Product.find()),inventories=await Inventory.find({product:{$in:products.map(item=>item._id)}}).lean(),grouped=new Map();
+      for(const item of inventories){const key=String(item.product);grouped.set(key,[...(grouped.get(key)||[]),item]);}
+      rows=products.map(item=>({...serialize.product(item,{inventories:grouped.get(String(item._id))||[]}),data:{title:item.title,images:item.images}}));
+    }
     else if (req.params.resource === "orders")
       rows = (
         await page(Order.find()
